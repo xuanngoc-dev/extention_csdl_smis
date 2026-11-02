@@ -3,30 +3,61 @@ import { BaseIcon } from '../components/base-icon.js';
 import { SessionCards } from '../components/session-cards.js';
 import { featureGroups } from '../lib/feature-registry.js';
 import { useNavStore } from '../stores/nav.js';
+import { useSessionStore } from '../stores/session.js';
+import { useUiStore } from '../stores/ui.js';
+
+function featureCard(feature, groupTitle, locked, tip, nav) {
+  return h('div', { key: feature.key, class: 'feature-hit' }, [
+    h(
+      'button',
+      {
+        type: 'button',
+        class: 'feature-card',
+        disabled: locked,
+        'aria-describedby': locked ? `feature-tip-${feature.key}` : undefined,
+        onClick: () => {
+          if (locked) return;
+          nav.openFeature(feature);
+        },
+      },
+      [
+        h('span', { class: ['feature-icon', `tone-${feature.tone}`] }, [h(BaseIcon, { name: feature.icon, size: 22 })]),
+        h('span', { class: 'feature-text' }, [
+          groupTitle ? h('span', { class: 'feature-group' }, groupTitle) : null,
+          h('b', feature.title),
+          h('span', feature.desc),
+        ]),
+        h(BaseIcon, { name: 'chevronRight', size: 18, class: 'chevron' }),
+      ],
+    ),
+    locked ? h('span', { id: `feature-tip-${feature.key}`, class: 'feature-tip', role: 'tooltip' }, tip) : null,
+  ]);
+}
 
 export const HomeView = defineComponent({
   name: 'HomeView',
   setup() {
     const nav = useNavStore();
-    return () =>
-      h('div', { class: 'home' }, [
+    const session = useSessionStore();
+    const ui = useUiStore();
+    return () => {
+      const locked = !session.loggedIn;
+      const tip = session.checking
+        ? 'Đang kiểm tra phiên SMIS.'
+        : 'Đăng nhập SMIS để sử dụng chức năng này.';
+      const groups = featureGroups();
+      const wide = ui.frame === 'max';
+      return h('div', { class: 'home' }, [
         h(SessionCards),
-        ...featureGroups().map((group) =>
-          h('section', { class: 'group', key: group.key }, [
-            h('h2', { class: 'group-title' }, group.title),
-            ...group.items.map((feature) =>
-              h(
-                'button',
-                { key: feature.key, type: 'button', class: 'feature-card', onClick: () => nav.openFeature(feature) },
-                [
-                  h('span', { class: ['feature-icon', `tone-${feature.tone}`] }, [h(BaseIcon, { name: feature.icon, size: 22 })]),
-                  h('span', { class: 'feature-text' }, [h('b', feature.title), h('span', feature.desc)]),
-                  h(BaseIcon, { name: 'chevronRight', size: 18, class: 'chevron' }),
-                ],
-              ),
+        wide
+          ? h('div', { class: 'feature-grid' }, groups.flatMap((group) => group.items.map((feature) => featureCard(feature, group.title, locked, tip, nav))))
+          : groups.map((group) =>
+              h('section', { class: 'group', key: group.key }, [
+                h('h2', { class: 'group-title' }, group.title),
+                h('div', { class: 'feature-grid' }, group.items.map((feature) => featureCard(feature, '', locked, tip, nav))),
+              ]),
             ),
-          ]),
-        ),
       ]);
+    };
   },
 });

@@ -1,4 +1,4 @@
-import { defineComponent, h, onMounted, onUnmounted } from 'vue';
+import { defineComponent, h, onMounted, onUnmounted, watch } from 'vue';
 import { BaseIcon } from './components/base-icon.js';
 import { Panel } from './components/panel.js';
 import { LOGIN_WINDOW_MESSAGE_TYPE, MESSAGE_TYPE } from '../shared/messages.js';
@@ -31,6 +31,13 @@ export const App = defineComponent({
       session.refresh();
     }
 
+    watch(
+      () => [session.loggedIn, session.checking],
+      ([loggedIn, checking]) => {
+        if (!checking && !loggedIn) nav.reset();
+      },
+    );
+
     const onMessage = (message) => {
       if (message?.type === MESSAGE_TYPE && message.action === 'toggle-panel') togglePanel();
       if (message?.type === LOGIN_WINDOW_MESSAGE_TYPE) session.refresh();
@@ -45,7 +52,7 @@ export const App = defineComponent({
     return () =>
       h('div', { class: 'csdl-root' }, [
         h('div', { class: 'launcher' }, [
-          ui.open ? h('div', { class: 'panel-backdrop', onClick: closePanel }) : null,
+          ui.open && ui.frame !== 'min' ? h('div', { class: 'panel-backdrop', onClick: closePanel }) : null,
           ui.open ? h(Panel, { onClose: closePanel }) : null,
           h(
             'button',

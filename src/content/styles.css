@@ -106,6 +106,18 @@
   box-shadow: 0 12px 40px rgba(15, 35, 90, 0.35);
 }
 
+.panel.is-max {
+  width: calc(100vw - 40px);
+  height: calc(100vh - 110px);
+  max-width: none;
+  max-height: none;
+}
+
+.panel.is-min { height: auto; }
+
+.panel.is-min .sub-header,
+.panel.is-min .panel-body { display: none; }
+
 .panel:focus { outline: none; }
 
 .panel-header,
@@ -116,7 +128,17 @@
   flex-shrink: 0;
 }
 
-.panel-header { padding: 8px 16px 10px; background: #f1f6fc; }
+.panel-header { padding: 6px 8px 8px 16px; background: #f1f6fc; align-items: flex-start; }
+
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.brand-mark,
+.titles { align-self: center; }
 
 .brand-mark {
   display: flex;
@@ -352,12 +374,32 @@
   text-transform: uppercase;
 }
 
+.feature-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.panel.is-max .feature-grid {
+  grid-template-columns: repeat(auto-fit, minmax(max(240px, calc((100% - 24px) / 4)), 1fr));
+}
+
+.feature-hit {
+  position: relative;
+  display: block;
+  min-width: 0;
+  margin: 0;
+}
+
+.panel.is-max .feature-hit,
+.panel.is-max .feature-card { height: 100%; }
+
 .feature-card {
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
-  margin: 0 0 8px;
+  margin: 0;
   padding: 12px;
   border: 1px solid #d3e2f7;
   border-radius: 12px;
@@ -367,6 +409,33 @@
 }
 
 .feature-card:hover { background: #f7faff; }
+
+.feature-card:disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.feature-hit:has(.feature-card:disabled) { cursor: not-allowed; }
+
+.feature-card:disabled:hover { background: #fff; }
+
+.feature-tip {
+  position: absolute;
+  z-index: 4;
+  left: 12px;
+  right: 12px;
+  bottom: calc(100% + 6px);
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #1c2b4a;
+  color: #fff;
+  line-height: 1.4;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.feature-hit:hover .feature-tip,
+.feature-hit:focus-within .feature-tip { visibility: visible; }
 
 .feature-icon {
   display: flex;
@@ -386,6 +455,12 @@
 .tone-rose { background: #f43f5e; }
 
 .feature-text { flex: 1; min-width: 0; }
+.feature-group {
+  color: #1a3f93;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 .feature-text b, .feature-text span { display: block; }
 .feature-text span { color: #5b6b88; }
 .chevron { color: #5b6b88; flex-shrink: 0; }

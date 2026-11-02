@@ -6,6 +6,15 @@ import { StaffPickView } from '../views/staff-pick-view.js';
 import { findFeature } from '../lib/feature-registry.js';
 import { useNavStore } from '../stores/nav.js';
 import { useSessionStore } from '../stores/session.js';
+import { useUiStore } from '../stores/ui.js';
+
+function headerAction(icon, label, onClick) {
+  return h(
+    'button',
+    { type: 'button', class: 'icon-button', title: label, 'aria-label': label, onClick },
+    [h(BaseIcon, { name: icon, size: 18 })],
+  );
+}
 
 function csdlHeaderLabel(session) {
   if (session.csdlUser) return session.csdlUser;
@@ -19,6 +28,7 @@ export const Panel = defineComponent({
   setup(_props, { emit }) {
     const nav = useNavStore();
     const session = useSessionStore();
+    const ui = useUiStore();
     const panelRef = ref(null);
     onMounted(() => panelRef.value?.focus());
 
@@ -28,7 +38,7 @@ export const Panel = defineComponent({
         'section',
         {
           ref: panelRef,
-          class: 'panel',
+          class: ['panel', ui.frame === 'min' ? 'is-min' : '', ui.frame === 'max' ? 'is-max' : ''],
           role: 'dialog',
           tabindex: '-1',
           'aria-label': 'Trợ lý CSDL',
@@ -46,16 +56,19 @@ export const Panel = defineComponent({
                 h('span', { class: 'status-label' }, csdlHeaderLabel(session)),
               ]),
             ]),
-            h(
-              'button',
-              {
-                type: 'button',
-                class: 'icon-button',
-                'aria-label': 'Đóng Trợ lý CSDL',
-                onClick: () => emit('close'),
-              },
-              [h(BaseIcon, { name: 'close', size: 18 })],
-            ),
+            h('div', { class: 'panel-actions' }, [
+              headerAction(
+                ui.frame === 'min' ? 'restore' : 'minimize',
+                ui.frame === 'min' ? 'Khôi phục' : 'Thu nhỏ',
+                () => ui.minimize(),
+              ),
+              headerAction(
+                ui.frame === 'max' ? 'restore' : 'maximize',
+                ui.frame === 'max' ? 'Khôi phục' : 'Phóng to',
+                () => ui.maximize(),
+              ),
+              headerAction('close', 'Đóng', () => emit('close')),
+            ]),
           ]),
           feature
             ? h('div', { class: 'sub-header' }, [
