@@ -1,0 +1,1087 @@
+{
+  "title": "Luồng dữ liệu và API — Trợ lý VNEDU",
+  "description": "Extension Chrome MV3 đọc dữ liệu trên trang trường VNEDU rồi ghi sang SMIS. Tài liệu này bám source trong src/background và src/content.",
+  "capturedAt": "2026-11-02",
+  "sources": [
+    "src/background/router.js",
+    "src/background/vnedu/api.js",
+    "src/background/core/constants.js",
+    "src/background/net/http.js",
+    "src/background/features",
+    "src/content/lib/message-bridge.js",
+    "src/content/stores"
+  ],
+  "dataFlow": {
+    "summary": "Content script chạy trên trang trường, lấy token CSRF, gửi message sang service worker. Service worker gọi GET lên chính origin VNEDU hoặc gọi trang ASP.NET của SMIS, rồi trả { ok, error, data } về UI.",
+    "actors": [
+      {
+        "name": "Trang VNEDU",
+        "runtime": "content script",
+        "entry": "src/content/index.js",
+        "hosts": ["*.vnedu.vn", "hocbav2.dtsgroup.com.vn"],
+        "role": "Đọc cookie vnedu_csrf_token, hiện UI trong shadow root, gửi action cho background."
+      },
+      {
+        "name": "Service worker",
+        "runtime": "background",
+        "entry": "src/background/index.js",
+        "router": "src/background/router.js",
+        "role": "Kiểm tra origin, dispatch 37 action, gọi VNEDU hoặc SMIS, parse Excel bằng SheetJS."
+      },
+      {
+        "name": "VNEDU",
+        "baseUrl": "{origin của tab}/v5/",
+        "role": "API GET. Danh mục trả JSON. Đồng bộ trả file Excel."
+      },
+      {
+        "name": "SMIS",
+        "baseUrl": "https://smis.moet.edu.vn",
+        "role": "Phiên đăng nhập và các trang ASP.NET WebForms để nhập Excel hoặc ghi ajax."
+      }
+    ],
+    "message": {
+      "type": "vnedu-sync",
+      "shape": {
+        "type": "vnedu-sync",
+        "action": "tên action trong ACTION_HANDLERS",
+        "payload": "object tùy action"
+      },
+      "response": {
+        "ok": "boolean",
+        "error": "mã lỗi ổn định, không phải câu tiếng Việt",
+        "data": "payload khi ok = true",
+        "message": "có khi API VNEDU trả success=false kèm msg"
+      },
+      "originRule": "Chỉ nhận sender có hostname kết thúc bằng .vnedu.vn hoặc đúng hocbav2.dtsgroup.com.vn. Origin khác trả origin_not_allowed."
+    },
+    "steps": [
+      {
+        "order": 1,
+        "name": "Mở trang trường",
+        "detail": "Content script mount Vue khi path chứa /v5. Token lấy từ cookie vnedu_csrf_token."
+      },
+      {
+        "order": 2,
+        "name": "Nhận diện trường",
+        "detail": "Action get-vnedu-school gọi edu.truong.gettruong. UI giữ truongId, cap, token."
+      },
+      {
+        "order": 3,
+        "name": "Phiên SMIS",
+        "detail": "check-session GET trang chủ SMIS. Chưa đăng nhập thì open-login mở popup Login.aspx. get-smis-config đọc ChonNam.aspx để lấy năm, cấp, học kỳ, phân hiệu."
+      },
+      {
+        "order": 4,
+        "name": "Lấy danh sách",
+        "detail": "Action get-* tải JSON hoặc Excel từ VNEDU, parse thành dòng trên UI. Một số màn còn GET trang SMIS để lấy khối, lớp, môn, đợt nhập điểm."
+      },
+      {
+        "order": 5,
+        "name": "Ghi SMIS",
+        "detail": "Action sync-* GET trang ImportExcel, POST multipart nút Tải lên, POST tiếp nút Ghi. Học sinh và hạnh kiểm dùng thêm ajax postback."
+      }
+    ],
+    "excelSyncPattern": {
+      "appliesTo": ["lớp", "nhân sự", "học sinh", "đánh giá định kỳ", "điểm THCS", "điểm THPT", "phân công giảng dạy"],
+      "sequence": [
+        "GET file Excel từ VNEDU (cookie + my_token)",
+        "SheetJS đọc sheet, map cột header",
+        "GET trang SMIS ImportExcel để lấy __VIEWSTATE và __EVENTVALIDATION",
+        "POST multipart, field file ctl00$ContentPlaceHolder1$ctl00$FileExcel, nút bt_importSQL (Tải lên)",
+        "POST tiếp bt_EXCELtoSQL (Ghi)",
+        "Tùy màn: POST btChiTiet để tải file kết quả nhập"
+      ]
+    },
+    "conventions": {
+      "schoolYear": {
+        "value": "2026",
+        "constant": "SCHOOL_YEAR",
+        "file": "src/background/core/constants.js"
+      },
+      "vneduToken": {
+        "query": "my_token",
+        "source": "cookie vnedu_csrf_token trên trang trường",
+        "reader": "src/content/lib/message-bridge.js getVneduCsrfToken"
+      },
+      "phanHieu": {
+        "query": "ma_phan_hieu",
+        "source": "mã trong ngoặc của rcbPhanHieu trên ChonNam.aspx",
+        "emptyValue": "0"
+      },
+      "cap": {
+        "meaning": "1 tiểu học, 2 THCS, 3 THPT",
+        "source": "ưu tiên smisConfig.cap, không có thì cap từ edu.truong.gettruong",
+        "path": "nhiều trang SMIS nằm dưới /C{cap}/"
+      },
+      "vneduPaging": {
+        "page": "1",
+        "start": "0",
+        "limit": "25",
+        "usedBy": ["edu.khoi_hoc.getKhoiHoc", "edu.khoi_hoc.getLopByKhoix", "edu.so_diem.getMon"]
+      },
+      "vneduDefaultExportOptions": {
+        "cap": "1",
+        "namHoc": "2026",
+        "type": "excel",
+        "syncType": "0",
+        "isSmis": "1"
+      },
+      "smisUploadField": "ctl00$ContentPlaceHolder1$ctl00$FileExcel",
+      "smisButtons": {
+        "upload": { "name": "ctl00$ContentPlaceHolder1$ctl00$bt_importSQL", "label": "Tải lên" },
+        "write": { "name": "ctl00$ContentPlaceHolder1$ctl00$bt_EXCELtoSQL", "label": "Ghi" },
+        "result": { "name": "ctl00$ContentPlaceHolder1$ctl00$btChiTiet", "label": "Bảng kết quả nhập liệu" }
+      },
+      "smisAjaxHeaders": {
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "X-MicrosoftAjax": "Delta=true",
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      "credentials": "Mọi fetch dùng credentials: include. VNEDU dùng cookie của origin tab. SMIS dùng cookie smis.moet.edu.vn. Một số POST SMIS gắn thêm header trình duyệt qua declarativeNetRequest."
+    },
+    "levelFolders": {
+      "C1": "Tiểu học. Import lớp, nhân sự, học sinh, đánh giá định kỳ, phân công.",
+      "C2": "THCS. Thêm nhập điểm địa phương và hạnh kiểm.",
+      "C3": "THPT. Thêm nhập điểm địa phương và hạnh kiểm.",
+      "conduct": "Chỉ C2 và C3. Cấp 1 trả conduct_wrong_level."
+    },
+    "notes": [
+      "Kết quả rèn luyện phía VNEDU đang lấy từ mảng mẫu CONDUCT_MOCK_STUDENTS trong src/background/features/conduct/constants.js. Phần ghi SMIS (NhapHanhKiem.aspx) là request thật.",
+      "edu.so_diem_export.export_controler dùng chung cho THCS và THPT, khác nhau ở ma_cap (03 và 04) và cách map học kỳ.",
+      "Host VNEDU không cố định: URL được ghép từ origin của tab đang mở."
+    ]
+  },
+  "featureFlows": [
+    {
+      "id": "session",
+      "name": "Kết nối SMIS và nhận diện trường",
+      "store": "src/content/stores/smis-sync.js",
+      "trigger": "refreshSync khi mở panel hoặc sau khi đóng popup đăng nhập",
+      "summary": "Ba nguồn chạy song song: phiên SMIS, hồ sơ trường VNEDU, và trang chọn năm học. Mọi chức năng đồng bộ sau đó dùng truongId, token, cap và mã phân hiệu từ bước này.",
+      "steps": [
+        {
+          "order": 1,
+          "action": "check-session",
+          "from": "SMIS",
+          "detail": "GET trang chủ. Nếu bị đẩy về Login.aspx thì loggedIn=false. Nếu còn phiên thì đọc header: tài khoản, tên trường, cấp, năm, học kỳ. Song song GET /C1/HoSoTruongDetail.aspx để lấy mã định danh trường trong input tbMa."
+        },
+        {
+          "order": 2,
+          "action": "get-vnedu-school",
+          "from": "VNEDU",
+          "detail": "Đọc cookie vnedu_csrf_token trên tab. GET edu.truong.gettruong. UI giữ id trường, mã MOET, tên, cap và chính token đó. Lần gọi sau dùng lại nếu đã có id và token."
+        },
+        {
+          "order": 3,
+          "action": "get-smis-config",
+          "from": "SMIS",
+          "detail": "GET /ChonNam.aspx, đọc các ô cấp học, năm học, học kỳ, trường sáp nhập, phân hiệu. Mã phân hiệu là phần trong ngoặc. cap ở đây được ưu tiên hơn cap của VNEDU khi ghép đường dẫn /C{cap}/."
+        }
+      ],
+      "output": "smis.loggedIn, account, school, schoolCode, year, term; vnedu.id, token, cap; smisConfig.cap, phanHieuCode."
+    },
+    {
+      "id": "admin",
+      "name": "Kiểm tra quyền admin",
+      "store": "src/content/stores/admin.js",
+      "trigger": "Khi UI cần biết tài khoản có phải admin trường",
+      "summary": "Một request JSON, không đụng SMIS.",
+      "steps": [
+        {
+          "order": 1,
+          "action": "check-admin",
+          "from": "VNEDU",
+          "detail": "GET core.admin.isAdminSchool với my_token từ cookie. success=true thì isAdmin=true."
+        }
+      ],
+      "output": "isAdmin."
+    },
+    {
+      "id": "staff",
+      "name": "Nhân sự",
+      "store": "src/content/stores/staff-sync.js",
+      "trigger": "Mở màn nhân sự, hoặc bấm đồng bộ",
+      "summary": "Danh sách chỉ đến từ file Excel VNEDU. SMIS chỉ tham gia lúc ghi.",
+      "steps": [
+        {
+          "order": 1,
+          "action": "get-vnedu-school và get-smis-config",
+          "from": "bộ nhớ UI, gọi lại nếu thiếu",
+          "detail": "withStaffSyncParams lấy truongId, token, cap. Nếu chưa có mã phân hiệu thì GET ChonNam.aspx trước."
+        },
+        {
+          "order": 2,
+          "action": "get-staff-list",
+          "from": "VNEDU",
+          "detail": "GET csdltt.exportexcel.exportNhanSuSmis. SheetJS đọc cột STT, mã định danh, họ tên, vị trí việc làm. File được cache theo đúng URL export."
+        },
+        {
+          "order": 3,
+          "action": "sync-staff",
+          "from": "cache rồi SMIS",
+          "detail": "Dùng lại file đã cache, hết hạn thì tải lại. GET /C{cap}/GiaoVienImportExcel.aspx, POST Tải lên, POST Ghi, POST lấy file KetQuaNhapGiaoVien.xls. UI gắn lỗi từng dòng từ file kết quả."
+        }
+      ],
+      "output": "Danh sách nhân sự trên UI. Sau ghi: trạng thái từng dòng và file kết quả tải về máy."
+    },
+    {
+      "id": "class",
+      "name": "Lớp học",
+      "store": "src/content/stores/class-sync.js",
+      "trigger": "Mở màn lớp học, hoặc bấm đồng bộ",
+      "summary": "Cùng khuôn với nhân sự: Excel VNEDU để xem, trang ImportExcel của SMIS để ghi.",
+      "steps": [
+        {
+          "order": 1,
+          "action": "get-vnedu-school và get-smis-config",
+          "from": "bộ nhớ UI, gọi lại nếu thiếu",
+          "detail": "withClassSyncParams gom truongId, token, cap, maPhanHieu."
+        },
+        {
+          "order": 2,
+          "action": "get-class-list",
+          "from": "VNEDU",
+          "detail": "GET csdltt.exportexcel.exportLopHoc. Đọc cột STT, tên lớp, khối, điểm trường. Cache file theo URL."
+        },
+        {
+          "order": 3,
+          "action": "sync-class",
+          "from": "cache rồi SMIS",
+          "detail": "GET /C{cap}/LopImportExcel.aspx rồi POST Tải lên, Ghi, và file KetQuaNhapLop.xls."
+        }
+      ],
+      "output": "Danh sách lớp. Phạm vi cache là truongId + cap + maPhanHieu; đổi phân hiệu thì tải lại."
+    },
+    {
+      "id": "student",
+      "name": "Học sinh",
+      "store": "src/content/stores/student-sync.js",
+      "trigger": "Mở màn học sinh, chọn khối, bấm xem trước, rồi đồng bộ",
+      "summary": "Lớp để lọc lấy từ trang nhập SMIS. Danh sách học sinh lấy từ Excel VNEDU theo khối. Ghi đi bốn bước form, lâu hơn các màn khác.",
+      "steps": [
+        {
+          "order": 1,
+          "action": "get-student-smis-classes",
+          "from": "SMIS",
+          "detail": "Nếu chưa có cap thì nạp song song ChonNam.aspx và edu.truong.gettruong. GET /C{cap}/HocSinhImportExcel.aspx và bóc dropdown rcbLop thành { id, name }. Chưa tải học sinh ở bước này."
+        },
+        {
+          "order": 2,
+          "action": "student-status",
+          "from": "bộ nhớ service worker",
+          "detail": "Không gọi mạng. Trả lần ghi gần nhất và cho biết có khóa đồng bộ đang chạy hay không."
+        },
+        {
+          "order": 3,
+          "action": "student-preview",
+          "from": "VNEDU",
+          "detail": "Người dùng chọn một khối và có thể chọn vài lớp. GET csdltt.exportexcel.exportHocSinh với khoi, cap, năm lấy từ chuỗi năm SMIS, maPhanHieu, và ten_lop là các lớp nối bằng dấu phẩy. Parse họ tên, mã, lớp. File được giữ trong cache theo khối để bước ghi dùng lại."
+        },
+        {
+          "order": 4,
+          "action": "student-commit",
+          "from": "cache, VNEDU nếu cache hết hạn, rồi SMIS",
+          "detail": "Kiểm tra phiên SMIS. GET lại trang HocSinhImportExcel. POST Tải lên (tối đa 180 giây), POST ajax chkImport (60 giây), POST ajax btnOK (120 giây), POST btChiTiet (60 giây). UI nhận từng phase qua message phụ."
+        }
+      ],
+      "output": "Bảng học sinh của khối đã chọn. Sau ghi: trạng thái và lỗi từng học sinh, kèm file kết quả nếu SMIS trả về."
+    },
+    {
+      "id": "result-c1",
+      "name": "Kết quả học tập tiểu học",
+      "store": "src/content/stores/result-sync.js",
+      "view": "Màn kết quả khi cap = 1",
+      "trigger": "Mở màn, đổi khối, đổi lớp hoặc đổi mức đánh giá, rồi đồng bộ",
+      "summary": "Khối và lớp lấy từ trang nhập đánh giá của SMIS. Điểm và nhận xét lấy từ Excel VNEDU của đúng lớp, học kỳ và mức giữa kỳ hoặc cuối kỳ.",
+      "steps": [
+        {
+          "order": 1,
+          "action": "get-result-smis-classes",
+          "from": "SMIS",
+          "detail": "GET /C{cap}/DanhGiaDinhKyImportExcel.aspx?is_popup=1&SelectedMaKhoi={khối}&SelectedMaGiaiDoan=GK1. Đọc rcbKhoi, rcbLop, học kỳ trong hdKYHOC và các mốc GK/CK. UI chọn lớp đầu tiên rồi gọi bước tải điểm."
+        },
+        {
+          "order": 2,
+          "action": "get-result-list",
+          "from": "VNEDU",
+          "detail": "Cần token trường. GET edu.so_diem_export.export_lop_dgdk_smis với hocKy, muc, ten_lop là tên lớp đang chọn, maPhanHieu. File nhiều sheet, mỗi sheet một môn. UI gom học sinh và nhóm điểm theo môn."
+        },
+        {
+          "order": 3,
+          "action": "sync-result",
+          "from": "VNEDU và SMIS",
+          "detail": "GET lại trang đánh giá với đúng lớp và mức đang chọn. Khớp học kỳ, lớp và giai đoạn; lệch thì dừng. File Excel dùng bản cache nếu còn. POST Tải lên, nếu SMIS báo lỗi thì trả smis_rejected và không ghi. Có nút Ghi thì POST Ghi và lấy file kết quả."
+        }
+      ],
+      "output": "Danh sách môn, mỗi môn có các học sinh và mức đạt, điểm KTĐK, nhận xét."
+    },
+    {
+      "id": "result-c2",
+      "name": "Kết quả học tập THCS",
+      "store": "src/content/stores/result-c2.js",
+      "view": "Màn kết quả khi cap = 2",
+      "trigger": "Mở màn, đổi khối hoặc môn, rồi đồng bộ",
+      "summary": "Khối đến từ VNEDU. Môn, lớp, đợt nhập và học kỳ đến từ popup SMIS. Điểm đến từ Excel VNEDU, rồi UI lọc lại theo tên lớp.",
+      "steps": [
+        {
+          "order": 1,
+          "action": "get-result-catalog",
+          "from": "VNEDU",
+          "detail": "GET edu.khoi_hoc.getKhoiHoc. Chọn khối đầu tiên. Hai action get-result-classes và get-result-subjects có trong router nhưng màn này không gọi."
+        },
+        {
+          "order": 2,
+          "action": "get-result-c2-catalog",
+          "from": "SMIS",
+          "detail": "GET /C2/NhapDiemDiaPhuongImportExcelMultiple.aspx với maKhoi đệm thành 2 chữ số, idLop, maMon và idDot để trống. Đọc học kỳ, danh sách môn, lớp, đợt nhập điểm và đợt đang được chọn."
+        },
+        {
+          "order": 3,
+          "action": "get-result-c2-list",
+          "from": "VNEDU",
+          "detail": "GET edu.so_diem_export.export_controler với ma_cap=03, iKhoi, ten_mon là tên môn SMIS, iHocKyId, ten_lop nếu đã chọn lớp. UI lọc các dòng có tên lớp khớp lớp đang chọn."
+        },
+        {
+          "order": 4,
+          "action": "sync-result-c2",
+          "from": "VNEDU và SMIS",
+          "detail": "Gửi thêm maKhoi, maMon, idDot. GET đúng popup SMIS theo bộ chọn đó, đối chiếu khối, môn, đợt, học kỳ, rồi POST Tải lên và Ghi."
+        }
+      ],
+      "output": "Các lớp của môn đang chọn, mỗi lớp có danh sách học sinh và cột điểm."
+    },
+    {
+      "id": "result-c3",
+      "name": "Kết quả học tập THPT",
+      "store": "src/content/stores/result-c3.js",
+      "view": "Màn kết quả khi cap = 3",
+      "trigger": "Mở màn, đổi khối 10–12, môn, lớp hoặc học kỳ, rồi đồng bộ",
+      "summary": "Khối và học kỳ là lựa chọn cố định trên UI. Môn và lớp lấy từ SMIS. Điểm lấy từ Excel VNEDU rồi lọc theo tên lớp.",
+      "steps": [
+        {
+          "order": 1,
+          "action": "get-smis-c3-subjects",
+          "from": "SMIS",
+          "detail": "Khối mặc định 10, học kỳ mặc định I. GET /C3/NhapDiemDiaPhuongImportExcel.aspx?is_popup=1&maKhoi={khối}. Đọc rcbMonHoc và rcbLop. Chọn môn đầu và lớp đầu."
+        },
+        {
+          "order": 2,
+          "action": "get-c3-result-list",
+          "from": "VNEDU",
+          "detail": "GET edu.so_diem_export.export_controler với ma_cap=04, iKhoi, ten_mon, iHocKyId (I thành 1, II thành 2), ten_lop. UI lọc học sinh theo tên lớp rồi nhóm theo lớp."
+        },
+        {
+          "order": 3,
+          "action": "sync-result-c3",
+          "from": "VNEDU và SMIS",
+          "detail": "GET /C3/NhapDiemDiaPhuongImportExcelMultiple.aspx với maKhoi, maMon và idLop. Khớp lựa chọn trên trang rồi POST Tải lên và Ghi."
+        }
+      ],
+      "output": "Học sinh của môn và lớp đang chọn, gom thành từng lớp kèm số điểm đã có."
+    },
+    {
+      "id": "teaching-assignment",
+      "name": "Phân công giảng dạy",
+      "store": "src/content/stores/teaching-assignment-sync.js",
+      "trigger": "Mở màn phân công, hoặc bấm đồng bộ",
+      "summary": "Một file Excel VNEDU theo cấp, học kỳ và phân hiệu. SMIS chỉ nhận file đó lúc ghi.",
+      "steps": [
+        {
+          "order": 1,
+          "action": "get-smis-config và get-vnedu-school",
+          "from": "bộ nhớ UI, gọi lại nếu thiếu",
+          "detail": "Lấy mã phân hiệu, tên phân hiệu, học kỳ đang chọn trên SMIS (chuẩn hóa thành số), token và capHoc."
+        },
+        {
+          "order": 2,
+          "action": "get-teaching-assignment-list",
+          "from": "VNEDU",
+          "detail": "GET edu.pcgd.exportExcelCSDLQuangIch với nam_hoc, cap_hoc, hoc_ky_id, ma_phan_hieu. Parse giáo viên, môn, lớp. Mã môn viết tắt được đổi sang tên môn."
+        },
+        {
+          "order": 3,
+          "action": "sync-teaching-assignment",
+          "from": "cache rồi SMIS",
+          "detail": "GET /{C1|C2|C3}/PhanCongChuyenMonImportExcel.aspx?is_popup=1, POST Tải lên rồi POST Ghi."
+        }
+      ],
+      "output": "Danh sách phân công. Đổi học kỳ hoặc phân hiệu thì phạm vi tải lại đổi theo."
+    },
+    {
+      "id": "staff-branch",
+      "name": "Đội ngũ theo phân hiệu",
+      "store": "src/content/stores/staff-branch-sync.js",
+      "trigger": "Mở màn, hoặc ghi một người / ghi tất cả",
+      "summary": "Hai nguồn đọc song song: JSON nhân sự VNEDU và HTML phân hiệu SMIS. Ghép tên phân hiệu bằng mã. Ghi từng người trên trang PhanHieuNhanSu.",
+      "steps": [
+        {
+          "order": 1,
+          "action": "get-staff-branch-list",
+          "from": "VNEDU",
+          "detail": "GET app.edu.giao_vien.service.nhan_su.getDanhSachMoet với token và maPhanHieu. Mỗi dòng có moetId, tên, danh sách phân hiệu giảng dạy và phân hiệu biên chế."
+        },
+        {
+          "order": 2,
+          "action": "get-smis-phan-hieu",
+          "from": "SMIS",
+          "detail": "Chạy cùng lúc với bước 1. GET /C{cap}/QuanLyPhanHieu.aspx. Cache danh sách theo truongId + cap + mã trường SMIS, lần sau không GET lại nếu phạm vi không đổi."
+        },
+        {
+          "order": 3,
+          "action": "ghép trên UI",
+          "from": "hai kết quả trên",
+          "detail": "Mã phân hiệu VNEDU được đổi thành tên nhờ danh sách SMIS. Người không có mã định danh hoặc không có phân hiệu giảng dạy bị đánh dấu và không đưa vào lượt ghi."
+        },
+        {
+          "order": 4,
+          "action": "sync-staff-branch",
+          "from": "SMIS",
+          "detail": "Với từng người: GET /PhanHieuNhanSu.aspx (cache 120 giây), POST ajax chọn rcbNhanSu, tick checkbox phân hiệu và radio biên chế cho khớp dữ liệu VNEDU, POST btLuu. Đã khớp sẵn thì bỏ qua, trả unchanged."
+        }
+      ],
+      "output": "Danh sách nhân sự kèm nơi giảng dạy và biên chế. Sau ghi: success, failed, hoặc đã khớp."
+    },
+    {
+      "id": "conduct",
+      "name": "Kết quả rèn luyện",
+      "store": "src/content/stores/conduct-result-sync.js",
+      "trigger": "Mở màn, đổi khối hoặc lớp, rồi ghi những dòng đủ điều kiện",
+      "summary": "Danh mục lớp và học sinh trên SMIS là dữ liệu thật. Cột kết quả rèn luyện phía VNEDU hiện lấy từ mảng mẫu, chưa gọi API điểm rèn luyện.",
+      "steps": [
+        {
+          "order": 1,
+          "action": "get-conduct-catalog",
+          "from": "SMIS",
+          "detail": "Chỉ cap 2 hoặc 3. Prefetch GET /{C2|C3}/DSHocSinh.aspx. GET /{C2|C3}/NhapHanhKiem.aspx, postback chọn khối, đọc danh sách lớp và học kỳ. Lần mở màn gửi fresh=true để xóa cache trang."
+        },
+        {
+          "order": 2,
+          "action": "get-conduct-preview",
+          "from": "SMIS và dữ liệu mẫu",
+          "detail": "Song song duyệt hết trang DSHocSinh và NhapHanhKiem của lớp đang chọn. Một nhánh trả học sinh SMIS (mã, tên, ngày sinh). Nhánh kia trả kết quả rèn luyện đang có trên lưới. Nhánh VNEDU trả CONDUCT_MOCK_STUDENTS. Ghép theo mã định danh: có mặt trên cả hai thì inSmis=true, tên lệch thì ghi nameMismatch."
+        },
+        {
+          "order": 3,
+          "action": "sync-conduct-result",
+          "from": "SMIS",
+          "detail": "UI chỉ gửi học sinh đang chờ hoặc lỗi, có trên SMIS, có mã, có giá trị hợp lệ và tên không lệch. POST ajax BatchEdit vào cột hạnh kiểm của NhapHanhKiem.aspx, rồi đọc thông báo lưu."
+        }
+      ],
+      "output": "Mỗi học sinh có kết quả VNEDU, kết quả SMIS, cờ có trên SMIS và ghi chú lệch tên. mock=true khi nguồn VNEDU là dữ liệu mẫu."
+    }
+  ],
+  "guide": {
+    "title": "Hướng dẫn từ bước đăng nhập SMIS",
+    "where": "Panel extension trên trang VNEDU. Không nhập tài khoản SMIS vào extension và không cần chuyển tab sang SMIS để đồng bộ.",
+    "prerequisite": [
+      "Đang mở trang trường trên *.vnedu.vn hoặc hocbav2.dtsgroup.com.vn và đã đăng nhập VNEDU. Cookie vnedu_csrf_token có sẵn trên tab này.",
+      "Có tài khoản SMIS của nhà trường. Extension không lưu mật khẩu.",
+      "Muốn vào mục Cài đặt → Kết nối SMIS thì tài khoản VNEDU phải là admin trường (core.admin.isAdminSchool)."
+    ],
+    "steps": [
+      {
+        "order": 1,
+        "title": "Mở panel trên trang VNEDU",
+        "do": "Bấm nút mở trợ lý trên trang trường. Extension tự gọi check-session, get-vnedu-school và get-smis-config.",
+        "see": "Nếu Chrome này chưa có cookie SMIS, thẻ kết nối hiện «Chưa đăng nhập hệ thống SMIS» và nút «Đăng nhập SMIS». Nếu đã từng đăng nhập SMIS trên cùng hồ sơ Chrome, thẻ có thể hiện «Đã đăng nhập» ngay, kèm tài khoản và mã trường."
+      },
+      {
+        "order": 2,
+        "title": "Đăng nhập SMIS",
+        "do": "Bấm «Đăng nhập SMIS». Extension mở cửa sổ popup 480×700 tới https://smis.moet.edu.vn/Login.aspx. Đăng nhập trên trang SMIS thật. Khi URL rời trang login, popup tự đóng.",
+        "whatHappens": "Cookie phiên được ghi vào hồ sơ Chrome cho smis.moet.edu.vn. Service worker sau đó gửi mọi request SMIS kèm cookie này. Extension không nhận username hay password.",
+        "see": "Panel gọi lại check-session, get-vnedu-school và get-smis-config. Trạng thái chuyển «Đã đăng nhập», hiện tài khoản, tên trường và mã định danh đọc từ HoSoTruongDetail.aspx.",
+        "ifClosedEarly": "Đóng popup khi còn ở trang login thì phiên không được tạo. Bấm đăng nhập lại.",
+        "ifFails": "SMIS không mở được thì lỗi smis_unreachable. Bị đẩy về Login.aspx khi ghi dữ liệu thì lỗi smis_not_logged_in."
+      },
+      {
+        "order": 3,
+        "title": "Chọn năm học, cấp, học kỳ và phân hiệu",
+        "do": "Khi đã đăng nhập, bấm «Thay đổi thông tin». Popup mở https://smis.moet.edu.vn/ChonNam.aspx. Chọn cấp học, năm học, học kỳ, trường và phân hiệu trên trang SMIS, lưu như khi dùng SMIS bình thường, rồi đóng popup.",
+        "whatHappens": "Extension đọc lại các ô rcbCapHoc, rcbNamHoc, rcbHocKy, rcbTruongSapNhap, rcbPhanHieu. Mã trong ngoặc của phân hiệu thành ma_phan_hieu. cap 1, 2 hoặc 3 quyết định thư mục /C1/, /C2/, /C3/.",
+        "see": "Panel hiện năm học, cấp, học kỳ, trường đang chọn và phân hiệu.",
+        "ifSkipped": "Chưa chọn phân hiệu thì mã gửi sang VNEDU là 0. Chưa có cap từ trang này thì extension dùng cap của trường VNEDU. Đồng bộ vẫn chạy nhưng có thể nhằm cấp hoặc phân hiệu."
+      },
+      {
+        "order": 4,
+        "title": "Chọn chức năng đồng bộ",
+        "do": "Ở màn đồng bộ dữ liệu, chọn Nhân sự, Lớp học, Học sinh, Kết quả học tập, Phân công giảng dạy, Đội ngũ theo phân hiệu hoặc Kết quả rèn luyện. Kết quả học tập mở màn tiểu học, THCS hoặc THPT theo cap vừa cấu hình.",
+        "whatHappens": "Mỗi màn tải danh sách từ VNEDU hoặc từ trang SMIS bằng cookie vừa đăng nhập. Bấm đồng bộ mới ghi vào SMIS. Chi tiết từng màn nằm ở featureFlows."
+      },
+      {
+        "order": 5,
+        "title": "Đăng xuất khi đổi tài khoản SMIS",
+        "do": "Trên thẻ trường, chọn đổi trường. Extension gọi Logout.aspx, xóa trạng thái phiên và cấu hình trên panel, rồi mở lại popup đăng nhập.",
+        "see": "Năm học, phân hiệu và mã trường cũ không còn được dùng cho lượt đồng bộ sau."
+      }
+    ],
+    "thenByFeature": [
+      {
+        "feature": "Nhân sự",
+        "featureFlowId": "staff",
+        "afterLogin": "Mở màn nhân sự. Extension tải Excel exportNhanSuSmis theo cap và mã phân hiệu đang chọn. Kiểm tra danh sách rồi bấm đồng bộ để ghi vào /C{cap}/GiaoVienImportExcel.aspx."
+      },
+      {
+        "feature": "Lớp học",
+        "featureFlowId": "class",
+        "afterLogin": "Mở màn lớp. Excel exportLopHoc được tải theo cùng phạm vi. Đồng bộ ghi vào /C{cap}/LopImportExcel.aspx."
+      },
+      {
+        "feature": "Học sinh",
+        "featureFlowId": "student",
+        "afterLogin": "Mở màn học sinh. Danh sách lớp lọc lấy từ HocSinhImportExcel.aspx của cấp đang chọn. Chọn một khối, có thể chọn vài lớp, xem trước Excel exportHocSinh, rồi mới đồng bộ."
+      },
+      {
+        "feature": "Kết quả tiểu học",
+        "featureFlowId": "result-c1",
+        "afterLogin": "Chỉ khi cap đang chọn là 1. Khối và lớp đọc từ trang đánh giá định kỳ của SMIS. Chọn lớp, học kỳ và mức giữa kỳ hoặc cuối kỳ. Điểm lấy từ Excel VNEDU rồi ghi lại trang đó."
+      },
+      {
+        "feature": "Kết quả THCS",
+        "featureFlowId": "result-c2",
+        "afterLogin": "Khi cap là 2. Khối lấy từ VNEDU, môn và đợt lấy từ popup nhập điểm SMIS. Chọn môn và đợt nhập trước khi đồng bộ."
+      },
+      {
+        "feature": "Kết quả THPT",
+        "featureFlowId": "result-c3",
+        "afterLogin": "Khi cap là 3. Chọn khối 10, 11 hoặc 12 và học kỳ I hoặc II. Môn và lớp lấy từ trang nhập điểm THPT của SMIS, điểm lấy từ Excel VNEDU."
+      },
+      {
+        "feature": "Phân công giảng dạy",
+        "featureFlowId": "teaching-assignment",
+        "afterLogin": "Học kỳ và phân hiệu lấy từ cấu hình vừa chọn. Danh sách là Excel phân công của VNEDU. Đồng bộ ghi vào PhanCongChuyenMonImportExcel.aspx của đúng cấp."
+      },
+      {
+        "feature": "Đội ngũ theo phân hiệu",
+        "featureFlowId": "staff-branch",
+        "afterLogin": "Danh sách người lấy từ API VNEDU, tên phân hiệu lấy từ QuanLyPhanHieu.aspx. Người thiếu mã định danh hoặc thiếu nơi giảng dạy không được ghi. Ghi từng người trên PhanHieuNhanSu.aspx."
+      },
+      {
+        "feature": "Kết quả rèn luyện",
+        "featureFlowId": "conduct",
+        "afterLogin": "Chỉ cấp 2 và 3. Lớp và học sinh đọc từ SMIS. Cột kết quả phía VNEDU hiện là dữ liệu mẫu, chưa phải điểm thật. Chỉ những dòng có trên SMIS, có mã và giá trị hợp lệ mới được ghi vào NhapHanhKiem.aspx."
+      }
+    ]
+  },
+  "vnedu": {
+    "urlTemplate": "{tabOrigin}/v5/?call={call}&{query}",
+    "method": "GET",
+    "auth": ["cookie phiên của origin tab", "query my_token"],
+    "apis": [
+      {
+        "call": "edu.truong.gettruong",
+        "kind": "json",
+        "feature": "Thông tin trường đang đăng nhập",
+        "actions": ["get-vnedu-school"],
+        "source": "src/background/vnedu/api.js getVneduSchool",
+        "params": [
+          { "name": "app_nam_hoc", "value": "2026", "required": true },
+          { "name": "my_token", "source": "payload.token", "required": true }
+        ],
+        "response": {
+          "shape": "{ data: { truong_id, moet_id, cap, TEN_TRUONG | ten_truong | ten } }",
+          "mappedTo": "{ id, code, name, cap }"
+        }
+      },
+      {
+        "call": "core.admin.isAdminSchool",
+        "kind": "json",
+        "feature": "Tài khoản có phải admin trường",
+        "actions": ["check-admin"],
+        "source": "src/background/vnedu/api.js checkVneduAdmin",
+        "params": [
+          { "name": "my_token", "source": "payload.token", "required": true }
+        ],
+        "response": {
+          "shape": "{ success: boolean }",
+          "mappedTo": "{ isAdmin }"
+        }
+      },
+      {
+        "call": "edu.khoi_hoc.getKhoiHoc",
+        "kind": "json",
+        "feature": "Danh mục khối cho kết quả học tập",
+        "actions": ["get-result-catalog"],
+        "source": "src/background/vnedu/api.js fetchKhoiList",
+        "params": [
+          { "name": "app_nam_hoc", "value": "2026", "required": true },
+          { "name": "my_token", "source": "payload.token", "required": true },
+          { "name": "page", "value": "1" },
+          { "name": "start", "value": "0" },
+          { "name": "limit", "value": "25" }
+        ],
+        "response": {
+          "shape": "[{ id, ten }]",
+          "mappedTo": "[{ id, name }]"
+        }
+      },
+      {
+        "call": "edu.khoi_hoc.getLopByKhoix",
+        "kind": "json",
+        "feature": "Lớp theo khối",
+        "actions": ["get-result-classes"],
+        "source": "src/background/vnedu/api.js fetchClassList",
+        "params": [
+          { "name": "nam_hoc", "value": "2026", "required": true },
+          { "name": "app_nam_hoc", "value": "2026", "required": true },
+          { "name": "my_token", "source": "payload.token", "required": true },
+          { "name": "khoi", "source": "payload.khoi", "required": true },
+          { "name": "page", "value": "1" },
+          { "name": "start", "value": "0" },
+          { "name": "limit", "value": "25" }
+        ],
+        "response": {
+          "shape": "[{ id, ten }]",
+          "mappedTo": "[{ id, name }], sắp xếp locale vi"
+        }
+      },
+      {
+        "call": "edu.so_diem.getMon",
+        "kind": "json",
+        "feature": "Môn theo lớp",
+        "actions": ["get-result-subjects"],
+        "source": "src/background/vnedu/api.js fetchSubjectList",
+        "params": [
+          { "name": "nam_hoc", "value": "2026", "required": true },
+          { "name": "app_nam_hoc", "value": "2026", "required": true },
+          { "name": "my_token", "source": "payload.token", "required": true },
+          { "name": "khoi", "source": "payload.khoi", "required": true },
+          { "name": "lop_hoc_id", "source": "payload.lopId", "required": true },
+          { "name": "page", "value": "1" },
+          { "name": "start", "value": "0" },
+          { "name": "limit", "value": "25" }
+        ],
+        "response": {
+          "shape": "[{ id, ten }]",
+          "mappedTo": "[{ id, name }]"
+        }
+      },
+      {
+        "call": "app.edu.giao_vien.service.nhan_su.getDanhSachMoet",
+        "kind": "json",
+        "feature": "Nhân sự theo phân hiệu: mã MOET, nơi giảng dạy, biên chế",
+        "actions": ["get-staff-branch-list"],
+        "source": "src/background/features/staff-branch.js fetchStaffBranchList",
+        "params": [
+          { "name": "my_token", "source": "payload.token", "required": true },
+          { "name": "ma_phan_hieu", "source": "payload.maPhanHieu", "required": false, "note": "bỏ query này khi rỗng" }
+        ],
+        "response": {
+          "shape": "{ success: true, data: [{ moet_id, name, phan_hieu_giang_day[], phan_hieu_bien_che }] }",
+          "mappedTo": "[{ key, moetId, name, giangDay, bienChe }]"
+        }
+      },
+      {
+        "call": "csdltt.exportexcel.exportNhanSuSmis",
+        "kind": "excel",
+        "feature": "Xuất danh sách nhân sự để nhập SMIS",
+        "actions": ["get-staff-list", "sync-staff"],
+        "source": "src/background/features/staff-sync.js buildStaffExportUrl",
+        "fallbackFileName": "GiaoVien.xls",
+        "columns": ["STT", "Mã định danh Bộ GD&ĐT", "Họ tên", "Vị trí việc làm"],
+        "params": [
+          { "name": "cap", "source": "payload.options.cap hoặc payload.cap, mặc định 1" },
+          { "name": "nam_hoc", "source": "payload.options.namHoc, mặc định 2026" },
+          { "name": "app_nam_hoc", "source": "cùng nam_hoc" },
+          { "name": "app_truong_id", "source": "payload.truongId", "required": true },
+          { "name": "type1", "value": "0" },
+          { "name": "ma_phan_hieu", "source": "payload.maPhanHieu, rỗng thì 0" },
+          { "name": "my_token", "source": "payload.token", "required": true }
+        ]
+      },
+      {
+        "call": "csdltt.exportexcel.exportLopHoc",
+        "kind": "excel",
+        "feature": "Xuất danh sách lớp",
+        "actions": ["get-class-list", "sync-class"],
+        "source": "src/background/features/class-sync.js buildClassExportUrl",
+        "fallbackFileName": "Lop.xls",
+        "columns": ["STT", "Tên lớp", "Khối", "Điểm trường"],
+        "params": [
+          { "name": "cap", "source": "payload.options.cap hoặc payload.cap, mặc định 1" },
+          { "name": "nam_hoc", "value": "2026" },
+          { "name": "app_nam_hoc", "value": "2026" },
+          { "name": "type", "value": "excel" },
+          { "name": "sync_type", "value": "0" },
+          { "name": "is_smis", "value": "1" },
+          { "name": "app_truong_id", "source": "payload.truongId", "required": true },
+          { "name": "ma_phan_hieu", "source": "payload.maPhanHieu, rỗng thì 0" },
+          { "name": "my_token", "source": "payload.token", "required": true }
+        ]
+      },
+      {
+        "call": "csdltt.exportexcel.exportHocSinh",
+        "kind": "excel",
+        "feature": "Xuất học sinh theo khối, có thể lọc một lớp",
+        "actions": ["student-preview", "student-commit"],
+        "source": "src/background/features/student/vnedu.js buildStudentExportUrl",
+        "fallbackFileName": "HocSinh_Khoi{khoi}.xls",
+        "columns": ["STT", "Mã định danh Bộ GD&ĐT | Mã định danh | Mã học sinh | Mã HS", "Họ và tên | Họ tên", "Lớp | Tên lớp | Lớp học"],
+        "params": [
+          { "name": "cap", "source": "payload.cap, mặc định 1" },
+          { "name": "nam_hoc", "source": "payload.namHoc, mặc định 2026" },
+          { "name": "type", "value": "excel" },
+          { "name": "sync_type", "value": "0" },
+          { "name": "type_so", "value": "1" },
+          { "name": "khoi", "source": "payload.khoi", "required": true },
+          { "name": "ten_lop", "source": "payload.tenLop", "required": false },
+          { "name": "ma_phan_hieu", "source": "payload.maPhanHieu, rỗng thì 0" },
+          { "name": "my_token", "source": "payload.token", "required": true }
+        ]
+      },
+      {
+        "call": "edu.so_diem_export.export_lop_dgdk_smis",
+        "kind": "excel",
+        "feature": "Đánh giá định kỳ tiểu học",
+        "actions": ["get-result-list", "sync-result"],
+        "source": "src/background/features/result-sync.js buildResultKtDkRequestUrl",
+        "fallbackFileName": "DanhGiaDinhKy.xlsx",
+        "columns": ["STT", "Mã định danh Bộ GD&ĐT hoặc Mã học sinh", "Họ và tên", "Ngày sinh", "Mức đạt được", "Điểm KTĐK", "Mã nhận xét", "Nội dung nhận xét"],
+        "params": [
+          { "name": "nam_hoc", "value": "2026" },
+          { "name": "app_nam_hoc", "value": "2026" },
+          { "name": "ten_lop", "source": "payload.lopName", "required": false },
+          { "name": "ma_phan_hieu", "source": "payload.maPhanHieu, rỗng thì 0" },
+          { "name": "iHocKyId", "source": "payload.hocKy", "required": true },
+          { "name": "muc", "source": "payload.muc", "required": true, "note": "giai đoạn GK/CK" },
+          { "name": "my_token", "source": "payload.token", "required": true }
+        ]
+      },
+      {
+        "call": "edu.so_diem_export.export_controler",
+        "kind": "excel",
+        "feature": "Điểm THCS",
+        "actions": ["get-result-c2-list", "sync-result-c2"],
+        "source": "src/background/features/result-c2.js buildResultC2RequestUrl",
+        "fallbackFileName": "DiemTheoKhoi.xlsx",
+        "params": [
+          { "name": "nam_hoc", "value": "2026" },
+          { "name": "app_nam_hoc", "value": "2026" },
+          { "name": "iKhoi", "source": "payload.khoi", "required": true },
+          { "name": "ten_lop", "source": "payload.tenLop", "required": false },
+          { "name": "ma_cap", "value": "03" },
+          { "name": "ten_mon", "source": "payload.mon", "required": true },
+          { "name": "iHocKyId", "source": "payload.hocKy", "required": true },
+          { "name": "stype", "value": "6" },
+          { "name": "ma_phan_hieu", "source": "payload.maPhanHieu, rỗng thì 0" },
+          { "name": "my_token", "source": "payload.token", "required": true }
+        ]
+      },
+      {
+        "call": "edu.so_diem_export.export_controler",
+        "kind": "excel",
+        "feature": "Điểm THPT. Học kỳ I/II được map sang 1/2",
+        "actions": ["get-c3-result-list", "sync-result-c3"],
+        "source": "src/background/features/result-c3.js buildResultC3RequestUrl",
+        "fallbackFileName": "DiemC3.xlsx",
+        "columns": ["STT", "Mã định danh Bộ GD&ĐT hoặc Mã học sinh", "Họ và tên hoặc Họ tên", "Ngày sinh", "Lớp hoặc Tên lớp", "điểm ở cột sau các cột định danh"],
+        "params": [
+          { "name": "nam_hoc", "source": "payload.namHoc, mặc định 2026" },
+          { "name": "iKhoi", "source": "payload.khoi", "required": true },
+          { "name": "ten_lop", "source": "payload.tenLop", "required": false },
+          { "name": "ma_cap", "value": "04" },
+          { "name": "ten_mon", "source": "payload.mon", "required": true },
+          { "name": "iHocKyId", "source": "payload.hocKy", "required": true, "note": "I → 1, II → 2, giá trị khác giữ nguyên" },
+          { "name": "stype", "value": "6" },
+          { "name": "ma_phan_hieu", "source": "payload.maPhanHieu, rỗng thì 0" },
+          { "name": "my_token", "source": "payload.token", "required": true }
+        ]
+      },
+      {
+        "call": "edu.pcgd.exportExcelCSDLQuangIch",
+        "kind": "excel",
+        "feature": "Phân công giảng dạy",
+        "actions": ["get-teaching-assignment-list", "sync-teaching-assignment"],
+        "source": "src/background/features/teaching-assignment/file.js buildTeachingAssignmentUrl",
+        "params": [
+          { "name": "nam_hoc", "source": "payload.namHoc, mặc định 2026" },
+          { "name": "cap_hoc", "source": "payload.capHoc", "required": true },
+          { "name": "hoc_ky_id", "source": "payload.hocKy", "required": true },
+          { "name": "ma_phan_hieu", "source": "payload.maPhanHieu, mặc định chuỗi rỗng" },
+          { "name": "my_token", "source": "payload.token", "required": true }
+        ],
+        "notes": "Mã môn viết tắt được map trong VNEDU_SUBJECT_ABBREVIATIONS, ví dụ TO = Toán, TV = Tiếng Việt, VA = Ngữ Văn."
+      }
+    ]
+  },
+  "smis": {
+    "baseUrl": "https://smis.moet.edu.vn",
+    "auth": "cookie phiên sau Login.aspx",
+    "apis": [
+      {
+        "method": "GET",
+        "path": "/",
+        "kind": "html",
+        "feature": "Kiểm tra phiên: tài khoản, tên trường, cấp, năm học, học kỳ",
+        "actions": ["check-session"],
+        "source": "src/background/features/session.js checkSmisSession",
+        "params": [],
+        "reads": ["div.v26-hdr-uname", "span.v26-hdr-school-name", "#phBoxCtx hoặc .ph-box-ctx"],
+        "response": "{ loggedIn, account, school, schoolCode, level, year, term }",
+        "notes": "Redirect tới Login.aspx được hiểu là chưa đăng nhập."
+      },
+      {
+        "method": "GET",
+        "path": "/Login.aspx",
+        "kind": "html",
+        "feature": "Popup đăng nhập 480×700. Background theo dõi URL rồi đóng cửa sổ khi vào được SMIS",
+        "actions": ["open-login"],
+        "source": "src/background/features/login-window.js",
+        "params": []
+      },
+      {
+        "method": "GET",
+        "path": "/Logout.aspx",
+        "kind": "html",
+        "feature": "Đăng xuất SMIS",
+        "actions": ["logout-smis"],
+        "source": "src/background/features/session.js logoutSmis",
+        "params": []
+      },
+      {
+        "method": "GET",
+        "path": "/C1/HoSoTruongDetail.aspx",
+        "kind": "html",
+        "feature": "Mã định danh trường",
+        "actions": ["check-session"],
+        "source": "src/background/features/session.js readSchoolCode",
+        "params": [],
+        "reads": ["input#ContentPlaceHolder1_ctl00_tbMa"],
+        "response": "schoolCode"
+      },
+      {
+        "method": "GET",
+        "path": "/ChonNam.aspx",
+        "kind": "html",
+        "feature": "Năm học, cấp, học kỳ, trường sáp nhập, phân hiệu đang chọn. open-smis-config mở chính URL này trong popup",
+        "actions": ["get-smis-config", "open-smis-config"],
+        "source": "src/background/features/smis-config.js",
+        "params": [],
+        "reads": [
+          "ctl00_ContentPlaceHolder1_rcbCapHoc_Input",
+          "ctl00_ContentPlaceHolder1_rcbNamHoc_Input",
+          "ctl00_ContentPlaceHolder1_rcbHocKy_Input",
+          "ctl00_ContentPlaceHolder1_rcbTruongSapNhap_Input",
+          "ctl00_ContentPlaceHolder1_rcbPhanHieu_Input"
+        ],
+        "response": "{ level, year, term, cap, truongChon, phanHieu, phanHieuCode }"
+      },
+      {
+        "method": "GET",
+        "path": "/C{cap}/GiaoVienImportExcel.aspx",
+        "kind": "form",
+        "feature": "Nhập Excel nhân sự",
+        "actions": ["sync-staff"],
+        "source": "src/background/features/staff-sync.js",
+        "params": [
+          { "name": "cap", "source": "1 | 2 | 3", "in": "path" }
+        ],
+        "writes": ["POST Tải lên", "POST Ghi", "POST file kết quả KetQuaNhapGiaoVien.xls"]
+      },
+      {
+        "method": "GET",
+        "path": "/C{cap}/LopImportExcel.aspx",
+        "kind": "form",
+        "feature": "Nhập Excel lớp học",
+        "actions": ["sync-class"],
+        "source": "src/background/features/class-sync.js",
+        "params": [
+          { "name": "cap", "source": "1 | 2 | 3", "in": "path" }
+        ],
+        "writes": ["POST Tải lên", "POST Ghi", "POST file kết quả KetQuaNhapLop.xls"]
+      },
+      {
+        "method": "GET",
+        "path": "/C{cap}/HocSinhImportExcel.aspx",
+        "kind": "form",
+        "feature": "Đọc danh sách lớp SMIS, preview và ghi học sinh",
+        "actions": ["get-student-smis-classes", "student-commit"],
+        "source": "src/background/features/student/import.js",
+        "params": [
+          { "name": "cap", "source": "2 hoặc C2 → C2, 3 hoặc C3 → C3, còn lại C1", "in": "path" }
+        ],
+        "reads": ["dropdown rcbLop → { id, name }"],
+        "writes": [
+          "POST multipart bt_importSQL, timeout 180s",
+          "POST ajax chkImport, timeout 60s",
+          "POST ajax btnOK, timeout 120s",
+          "POST btChiTiet, timeout 60s"
+        ],
+        "formFields": [
+          "ctl00$ContentPlaceHolder1$ctl00$rcbKhoi",
+          "ctl00$ContentPlaceHolder1$ctl00$rcbLop",
+          "ctl00$ContentPlaceHolder1$ctl00$rcbColumn",
+          "ctl00$ContentPlaceHolder1$ctl00$chkImport",
+          "config=ngang"
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/C{cap}/DanhGiaDinhKyImportExcel.aspx",
+        "kind": "form",
+        "feature": "Danh mục và ghi đánh giá định kỳ",
+        "actions": ["get-result-smis-classes", "sync-result"],
+        "source": "src/background/features/result-c2.js buildResultC2ImportPageUrl",
+        "params": [
+          { "name": "cap", "source": "payload.cap, mặc định 1", "in": "path" },
+          { "name": "is_popup", "value": "1", "in": "query" },
+          { "name": "SelectedMaKhoi", "source": "mã khối", "in": "query" },
+          { "name": "SelectedIDLop", "source": "id lớp, rỗng khi chỉ đọc danh mục", "in": "query" },
+          { "name": "SelectedMaGiaiDoan", "source": "GK1 khi đọc danh mục; khi ghi là muc viết hoa", "in": "query" }
+        ],
+        "reads": ["rcbKhoi", "rcbLop", "rcbThoiDiemDanhGia", "ctl00$hdKYHOC"]
+      },
+      {
+        "method": "GET",
+        "path": "/C2/NhapDiemDiaPhuongImportExcelMultiple.aspx",
+        "kind": "form",
+        "feature": "Danh mục và ghi điểm THCS",
+        "actions": ["get-result-c2-catalog", "sync-result-c2"],
+        "source": "src/background/features/result-c2.js buildResultC2ImportPageUrlDetailed",
+        "params": [
+          { "name": "is_popup", "value": "1", "in": "query" },
+          { "name": "maKhoi", "source": "payload.maKhoi", "in": "query" },
+          { "name": "idLop", "source": "payload.idLop", "in": "query" },
+          { "name": "idDotNhapDiem", "source": "payload.idDot", "in": "query" },
+          { "name": "maMon", "source": "payload.maMon", "in": "query" }
+        ],
+        "reads": ["rcbKhoi", "rcbLop", "rcbMonHoc", "rcbDotNhapDiem", "ctl00$hdKYHOC"]
+      },
+      {
+        "method": "GET",
+        "path": "/C3/NhapDiemDiaPhuongImportExcel.aspx",
+        "kind": "html",
+        "feature": "Môn và lớp THPT theo khối",
+        "actions": ["get-smis-c3-subjects"],
+        "source": "src/background/features/result-c3.js buildResultC3ImportPageUrl",
+        "params": [
+          { "name": "is_popup", "value": "1", "in": "query" },
+          { "name": "maKhoi", "source": "payload.maKhoi", "in": "query" }
+        ],
+        "reads": ["rcbMonHoc", "rcbLop"],
+        "response": "{ mon: [{ id, name }], classes: [{ id, name }] }"
+      },
+      {
+        "method": "GET",
+        "path": "/C3/NhapDiemDiaPhuongImportExcelMultiple.aspx",
+        "kind": "form",
+        "feature": "Danh mục chi tiết và ghi điểm THPT",
+        "actions": ["get-result-c3-catalog", "sync-result-c3"],
+        "source": "src/background/features/result-c3.js buildResultC3ImportPageUrlDetailed",
+        "params": [
+          { "name": "is_popup", "value": "1", "in": "query" },
+          { "name": "maKhoi", "source": "payload.maKhoi", "in": "query" },
+          { "name": "idLop", "source": "payload.idLop", "in": "query" },
+          { "name": "idDotNhapDiem", "source": "payload.idDot", "in": "query" },
+          { "name": "maMon", "source": "payload.maMon", "in": "query" }
+        ],
+        "reads": ["rcbKhoi", "rcbMonHoc", "rcbLop", "rcbDotNhapDiem", "ctl00$hdKYHOC hoặc hdfHocKy"]
+      },
+      {
+        "method": "GET",
+        "path": "/{C1|C2|C3}/PhanCongChuyenMonImportExcel.aspx",
+        "kind": "form",
+        "feature": "Nhập phân công chuyên môn",
+        "actions": ["sync-teaching-assignment"],
+        "source": "src/background/features/teaching-assignment/context.js",
+        "params": [
+          { "name": "is_popup", "value": "1", "in": "query" }
+        ],
+        "writes": ["POST Tải lên", "POST Ghi"]
+      },
+      {
+        "method": "GET",
+        "path": "/{C2|C3}/DSHocSinh.aspx",
+        "kind": "html",
+        "feature": "Prefetch danh sách học sinh trước khi đọc hạnh kiểm",
+        "actions": ["get-conduct-catalog"],
+        "source": "src/background/features/conduct/requests.js",
+        "params": [],
+        "notes": "Chỉ cấp 2 và 3."
+      },
+      {
+        "method": "POST",
+        "path": "/{C2|C3}/NhapHanhKiem.aspx",
+        "kind": "ajax",
+        "feature": "Đọc lớp, học kỳ và ghi kết quả rèn luyện theo lô",
+        "actions": ["get-conduct-catalog", "get-conduct-preview", "sync-conduct-result"],
+        "source": "src/background/features/conduct/requests.js",
+        "params": [
+          { "name": "__EVENTTARGET", "in": "form" },
+          { "name": "__EVENTARGUMENT", "in": "form", "note": "Command Select, PageSize, hoặc BatchEdit" },
+          { "name": "__ASYNCPOST", "value": "true", "in": "form" },
+          { "name": "RadAJAXControlID", "value": "ctl00_ContentPlaceHolder1_ctl00_RadAjaxManager1", "in": "form" },
+          { "name": "config", "value": "ngang", "in": "form" },
+          { "name": "ctl00$RadScriptManager1", "in": "form" }
+        ],
+        "notes": "Dữ liệu điểm rèn luyện đưa vào lưới lấy từ CONDUCT_MOCK_STUDENTS, không gọi API VNEDU."
+      },
+      {
+        "method": "GET",
+        "path": "/C{cap}/QuanLyPhanHieu.aspx",
+        "kind": "html",
+        "feature": "Danh sách phân hiệu của trường",
+        "actions": ["get-smis-phan-hieu"],
+        "source": "src/background/features/staff-branch.js buildPhanHieuPageUrl",
+        "params": [
+          { "name": "cap", "source": "payload.cap, mặc định 1", "in": "path" }
+        ],
+        "response": "các dòng phân hiệu parse từ HTML"
+      },
+      {
+        "method": "POST",
+        "path": "/PhanHieuNhanSu.aspx",
+        "kind": "ajax",
+        "feature": "Gán phân hiệu giảng dạy và biên chế cho một nhân sự",
+        "actions": ["sync-staff-branch"],
+        "source": "src/background/features/staff-branch.js",
+        "params": [
+          { "name": "__EVENTTARGET", "value": "ctl00$ContentPlaceHolder1$ctl00$rcbNhanSu khi chọn người; ctl00$ContentPlaceHolder1$ctl00$btLuu khi lưu", "in": "form" },
+          { "name": "__EVENTARGUMENT", "note": "JSON { Command: Select, Index } khi chọn người", "in": "form" },
+          { "name": "checkbox", "note": "name kết thúc bằng $cbPhanHieu", "in": "form" },
+          { "name": "radio", "note": "name kết thúc bằng $bienche", "in": "form" }
+        ],
+        "notes": "Trang được cache 120 giây sau lần GET đầu."
+      }
+    ]
+  },
+  "internalActions": [
+    { "action": "check-session", "calls": ["GET /", "GET /C1/HoSoTruongDetail.aspx"] },
+    { "action": "open-login", "calls": ["GET /Login.aspx"] },
+    { "action": "logout-smis", "calls": ["GET /Logout.aspx"] },
+    { "action": "get-vnedu-school", "calls": ["edu.truong.gettruong"] },
+    { "action": "check-admin", "calls": ["core.admin.isAdminSchool"] },
+    { "action": "get-smis-config", "calls": ["GET /ChonNam.aspx"] },
+    { "action": "open-smis-config", "calls": ["GET /ChonNam.aspx"] },
+    { "action": "get-staff-list", "calls": ["csdltt.exportexcel.exportNhanSuSmis"] },
+    { "action": "sync-staff", "calls": ["csdltt.exportexcel.exportNhanSuSmis", "POST /C{cap}/GiaoVienImportExcel.aspx"] },
+    { "action": "get-class-list", "calls": ["csdltt.exportexcel.exportLopHoc"] },
+    { "action": "sync-class", "calls": ["csdltt.exportexcel.exportLopHoc", "POST /C{cap}/LopImportExcel.aspx"] },
+    { "action": "get-result-catalog", "calls": ["edu.khoi_hoc.getKhoiHoc"] },
+    { "action": "get-result-classes", "calls": ["edu.khoi_hoc.getLopByKhoix"] },
+    { "action": "get-result-subjects", "calls": ["edu.so_diem.getMon"] },
+    { "action": "get-result-list", "calls": ["edu.so_diem_export.export_lop_dgdk_smis"] },
+    { "action": "get-c3-result-list", "calls": ["edu.so_diem_export.export_controler ma_cap=04"] },
+    { "action": "sync-result", "calls": ["edu.so_diem_export.export_lop_dgdk_smis", "POST /C{cap}/DanhGiaDinhKyImportExcel.aspx"] },
+    { "action": "get-result-c2-catalog", "calls": ["GET /C2/NhapDiemDiaPhuongImportExcelMultiple.aspx"] },
+    { "action": "get-result-c2-list", "calls": ["edu.so_diem_export.export_controler ma_cap=03"] },
+    { "action": "sync-result-c2", "calls": ["edu.so_diem_export.export_controler ma_cap=03", "POST /C2/NhapDiemDiaPhuongImportExcelMultiple.aspx"] },
+    { "action": "get-result-smis-classes", "calls": ["GET /C{cap}/DanhGiaDinhKyImportExcel.aspx"] },
+    { "action": "get-smis-c3-subjects", "calls": ["GET /C3/NhapDiemDiaPhuongImportExcel.aspx"] },
+    { "action": "get-result-c3-catalog", "calls": ["GET /C3/NhapDiemDiaPhuongImportExcelMultiple.aspx"] },
+    { "action": "sync-result-c3", "calls": ["edu.so_diem_export.export_controler ma_cap=04", "POST /C3/NhapDiemDiaPhuongImportExcelMultiple.aspx"] },
+    { "action": "student-preview", "calls": ["csdltt.exportexcel.exportHocSinh"] },
+    { "action": "student-commit", "calls": ["csdltt.exportexcel.exportHocSinh", "POST /C{cap}/HocSinhImportExcel.aspx"] },
+    { "action": "student-status", "calls": [] },
+    { "action": "get-student-smis-classes", "calls": ["GET /C{cap}/HocSinhImportExcel.aspx"] },
+    { "action": "get-staff-branch-list", "calls": ["app.edu.giao_vien.service.nhan_su.getDanhSachMoet"] },
+    { "action": "get-smis-phan-hieu", "calls": ["GET /C{cap}/QuanLyPhanHieu.aspx"] },
+    { "action": "sync-staff-branch", "calls": ["POST /PhanHieuNhanSu.aspx"] },
+    { "action": "download-file", "calls": ["chrome.downloads, data URL base64, không gọi máy chủ"] },
+    { "action": "get-teaching-assignment-list", "calls": ["edu.pcgd.exportExcelCSDLQuangIch"] },
+    { "action": "sync-teaching-assignment", "calls": ["edu.pcgd.exportExcelCSDLQuangIch", "POST /{C1|C2|C3}/PhanCongChuyenMonImportExcel.aspx"] },
+    { "action": "get-conduct-catalog", "calls": ["GET /{C2|C3}/DSHocSinh.aspx", "GET+POST /{C2|C3}/NhapHanhKiem.aspx"] },
+    { "action": "get-conduct-preview", "calls": ["dữ liệu mẫu CONDUCT_MOCK_STUDENTS", "trang NhapHanhKiem.aspx khi ghép lớp"] },
+    { "action": "sync-conduct-result", "calls": ["POST ajax /{C2|C3}/NhapHanhKiem.aspx"] }
+  ]
+}

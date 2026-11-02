@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "Trợ lý CSDL",
+  "description": "Đọc dữ liệu trên cổng đồng bộ CSDL ngành và ghi sang SMIS.",
+  "version": "0.1.0",
+  "icons": {
+    "16": "icon/16.png",
+    "32": "icon/32.png",
+    "48": "icon/48.png",
+    "96": "icon/96.png",
+    "128": "icon/128.png"
+  },
+  "action": {
+    "default_title": "Trợ lý CSDL",
+    "default_icon": {
+      "16": "icon/16.png",
+      "32": "icon/32.png",
+      "48": "icon/48.png"
+    }
+  },
+  "permissions": [
+    "storage",
+    "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://dongbo.csdl.edu.vn/*",
+    "https://smis.moet.edu.vn/*"
+  ],
+  "minimum_chrome_version": "116",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://dongbo.csdl.edu.vn/*"],
+      "js": ["content-scripts/csdl.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["content-scripts/csdl.css"],
+      "matches": ["https://dongbo.csdl.edu.vn/*"]
+    }
+  ]
+}

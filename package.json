@@ -1,0 +1,19 @@
+{
+  "name": "csdl-emis-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Trợ lý CSDL — đồng bộ sang SMIS",
+  "scripts": {
+    "icons": "node tools/gen-icons.mjs",
+    "build": "node tools/build.mjs",
+    "watch": "node tools/build.mjs --watch"
+  },
+  "dependencies": {
+    "pinia": "3.0.4",
+    "vue": "3.5.43"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
