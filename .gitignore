@@ -1,3 +1,6 @@
 node_modules/
 build/
 .DS_Store
+
+# Tài khoản kiểm tra cục bộ. Không commit.
+config/csdl.local.json

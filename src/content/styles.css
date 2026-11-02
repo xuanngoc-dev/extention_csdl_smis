@@ -290,6 +290,18 @@
   font-weight: 700;
 }
 
+.pick-count {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pick-wrap { overflow-x: auto; margin-bottom: 12px; }
+
+.pick-table td { white-space: nowrap; }
+
+.pick-missing { color: #b91c1c; }
+
 .banner {
   padding: 10px 12px;
   border-radius: 8px;

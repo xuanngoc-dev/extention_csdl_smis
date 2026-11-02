@@ -12,7 +12,7 @@ export const FEATURE_ITEMS = [
   {
     key: 'staff',
     title: 'Nhân sự',
-    desc: 'Mã định danh, họ tên, vị trí việc làm',
+    desc: 'Chọn cán bộ trên trang Tra cứu cán bộ để đưa sang SMIS',
     group: 'directory',
     icon: 'people',
     tone: 'violet',

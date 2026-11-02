@@ -35,6 +35,12 @@
   "content_scripts": [
     {
       "matches": ["https://dongbo.csdl.edu.vn/*"],
+      "js": ["content-scripts/page-hook.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://dongbo.csdl.edu.vn/*"],
       "js": ["content-scripts/csdl.js"],
       "run_at": "document_idle"
     }

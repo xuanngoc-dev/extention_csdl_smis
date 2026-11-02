@@ -2,6 +2,7 @@ import { defineComponent, h, onMounted, ref } from 'vue';
 import { BaseIcon } from './base-icon.js';
 import { FeatureHoldView } from '../views/feature-hold-view.js';
 import { HomeView } from '../views/home-view.js';
+import { StaffPickView } from '../views/staff-pick-view.js';
 import { findFeature } from '../lib/feature-registry.js';
 import { useNavStore } from '../stores/nav.js';
 
@@ -55,7 +56,9 @@ export const Panel = defineComponent({
                 h('span', feature.title),
               ])
             : null,
-          h('div', { class: 'panel-body' }, [feature ? h(FeatureHoldView, { feature }) : h(HomeView)]),
+          h('div', { class: 'panel-body' }, [
+            feature ? h(feature.key === 'staff' ? StaffPickView : FeatureHoldView, { feature }) : h(HomeView),
+          ]),
         ],
       );
     };

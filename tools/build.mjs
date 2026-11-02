@@ -16,6 +16,7 @@ const shared = {
 };
 const entries = [
   { entryPoints: ['src/background/index.js'], outfile: 'build/background.js' },
+  { entryPoints: ['src/page/staff-watch.js'], outfile: 'build/content-scripts/page-hook.js' },
   {
     entryPoints: ['src/content/index.js'],
     outfile: 'build/content-scripts/csdl.js',

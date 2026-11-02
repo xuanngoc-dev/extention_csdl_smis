@@ -3,8 +3,10 @@ import { BaseIcon } from './components/base-icon.js';
 import { Panel } from './components/panel.js';
 import { LOGIN_WINDOW_MESSAGE_TYPE, MESSAGE_TYPE } from '../shared/messages.js';
 import { browserApi } from './runtime/browser-api.js';
+import { startStaffWatch } from './lib/staff-watch.js';
 import { useNavStore } from './stores/nav.js';
 import { useSessionStore } from './stores/session.js';
+import { useStaffPickStore } from './stores/staff-pick.js';
 import { useUiStore } from './stores/ui.js';
 
 export const App = defineComponent({
@@ -13,6 +15,7 @@ export const App = defineComponent({
     const ui = useUiStore();
     const nav = useNavStore();
     const session = useSessionStore();
+    const staffPick = useStaffPickStore();
 
     function closePanel() {
       ui.close();
@@ -28,13 +31,15 @@ export const App = defineComponent({
       session.refresh();
     }
 
-    onMounted(() => {
-      const onMessage = (message) => {
-        if (message?.type === MESSAGE_TYPE && message.action === 'toggle-panel') togglePanel();
-        if (message?.type === LOGIN_WINDOW_MESSAGE_TYPE) session.refresh();
-      };
-      browserApi.runtime.onMessage.addListener(onMessage);
-      onUnmounted(() => browserApi.runtime.onMessage.removeListener(onMessage));
+    const onMessage = (message) => {
+      if (message?.type === MESSAGE_TYPE && message.action === 'toggle-panel') togglePanel();
+      if (message?.type === LOGIN_WINDOW_MESSAGE_TYPE) session.refresh();
+    };
+    const stopStaffWatch = startStaffWatch(staffPick);
+    onMounted(() => browserApi.runtime.onMessage.addListener(onMessage));
+    onUnmounted(() => {
+      browserApi.runtime.onMessage.removeListener(onMessage);
+      stopStaffWatch();
     });
 
     return () =>
