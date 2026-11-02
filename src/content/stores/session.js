@@ -2,6 +2,10 @@ import { defineStore } from 'pinia';
 import { translateError } from '../lib/errors.js';
 import { sendBackgroundMessage } from '../lib/message-bridge.js';
 
+function readCsdlUserLabel() {
+  return document.querySelector('.user-name')?.textContent?.replace(/\s+/g, ' ').trim() || '';
+}
+
 const EMPTY_CONFIG = {
   year: '',
   term: '',
@@ -22,6 +26,7 @@ export const useSessionStore = defineStore('session', {
     ...EMPTY_CONFIG,
     error: '',
     csdlLoggedIn: false,
+    csdlUser: '',
   }),
   actions: {
     async refresh() {
@@ -37,6 +42,7 @@ export const useSessionStore = defineStore('session', {
       ]);
       this.checking = false;
       this.csdlLoggedIn = Boolean(csdl.ok && csdl.data?.loggedIn);
+      this.csdlUser = readCsdlUserLabel();
 
       if (!session.ok) {
         this.loggedIn = false;

@@ -5,12 +5,20 @@ import { HomeView } from '../views/home-view.js';
 import { StaffPickView } from '../views/staff-pick-view.js';
 import { findFeature } from '../lib/feature-registry.js';
 import { useNavStore } from '../stores/nav.js';
+import { useSessionStore } from '../stores/session.js';
+
+function csdlHeaderLabel(session) {
+  if (session.csdlUser) return session.csdlUser;
+  if (session.checking) return 'Đang kiểm tra phiên CSDL...';
+  return session.csdlLoggedIn ? 'Đã đăng nhập CSDL ngành' : 'Chưa đăng nhập CSDL ngành';
+}
 
 export const Panel = defineComponent({
   name: 'Panel',
   emits: ['close'],
   setup(_props, { emit }) {
     const nav = useNavStore();
+    const session = useSessionStore();
     const panelRef = ref(null);
     onMounted(() => panelRef.value?.focus());
 
@@ -33,7 +41,10 @@ export const Panel = defineComponent({
             h('span', { class: 'brand-mark' }, [h(BaseIcon, { name: 'cap', size: 26 })]),
             h('div', { class: 'titles' }, [
               h('strong', 'Trợ lý CSDL'),
-              h('span', { class: 'status' }, [h('i', { class: 'status-dot' }), 'CSDL ngành → SMIS']),
+              h('span', { class: 'status' }, [
+                h('i', { class: session.csdlLoggedIn ? 'status-dot' : 'status-dot is-off' }),
+                h('span', { class: 'status-label' }, csdlHeaderLabel(session)),
+              ]),
             ]),
             h(
               'button',

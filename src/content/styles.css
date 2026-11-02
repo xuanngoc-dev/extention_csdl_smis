@@ -138,7 +138,14 @@
   align-items: center;
   gap: 6px;
   margin-top: 2px;
+  min-width: 0;
   color: #5b6b88;
+}
+
+.status-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status-dot {
@@ -146,7 +153,10 @@
   height: 8px;
   border-radius: 999px;
   background: #22c55e;
+  flex-shrink: 0;
 }
+
+.status-dot.is-off { background: #94a3b8; }
 
 .icon-button {
   display: flex;
@@ -246,7 +256,26 @@
 
 .collapse-body { margin-top: 10px; }
 
+.smis-guest {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.smis-guest .collapse-summary { flex: 1; }
+
 .chevron.is-open { transform: rotate(90deg); }
+
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.info-grid .field { min-width: 0; margin-bottom: 0; }
+.info-grid .field-wide { grid-column: 1 / -1; }
 
 .field {
   display: flex;
