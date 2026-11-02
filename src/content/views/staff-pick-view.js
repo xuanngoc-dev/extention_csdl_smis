@@ -1,9 +1,9 @@
-import { defineComponent, h, ref } from 'vue';
-import { BaseIcon } from '../components/base-icon.js';
-import { describeSmisTarget } from '../lib/feature-registry.js';
-import { STAFF_ROW_FIELDS, STAFF_ROW_SHAPE, STAFF_SCOPE_PARAMS } from '../lib/staff-schema.js';
-import { isStaffRowReady } from '../../shared/staff-officials.js';
-import { useSessionStore } from '../stores/session.js';
+import { defineComponent, h, nextTick, onUnmounted, ref, watch } from 'vue';
+import { FilterSelect } from '../components/filter-select.js';
+import { translateError } from '../lib/errors.js';
+import { sendBackgroundMessage } from '../lib/message-bridge.js';
+import { readStoredCaps } from '../lib/staff-catalog.js';
+import { loadSchoolsByFilter, loadWardsByFilter } from '../lib/school-filter.js';
 import { useStaffPickStore } from '../stores/staff-pick.js';
 
 export const StaffPickView = defineComponent({
@@ -12,124 +12,386 @@ export const StaffPickView = defineComponent({
     feature: { type: Object, required: true },
   },
   setup(props) {
-    const session = useSessionStore();
     const picked = useStaffPickStore();
-    const schemaOpen = ref(false);
+    const busy = ref('');
+    const confirmOpen = ref(false);
+    const dialogRef = ref(null);
+    const fileInput = ref(null);
+    const chosenFile = ref(null);
+    const notice = ref('');
+    const noticeError = ref(false);
+    const toast = ref(null);
+    let toastTimer = 0;
+    let schoolLoad = 0;
+    let wardLoad = 0;
+    picked.loadCaps(readStoredCaps());
+    onUnmounted(() => window.clearTimeout(toastTimer));
+
+    watch(
+      () => picked.namHoc,
+      () => {
+        refreshWards(picked, () => wardLoad, (value) => {
+          wardLoad = value;
+        });
+      },
+      { immediate: true },
+    );
+
+    watch(
+      () => [picked.namHoc, picked.capHoc, picked.wardIds.join(',')],
+      () => {
+        refreshSchools(picked, () => schoolLoad, (value) => {
+          schoolLoad = value;
+        });
+      },
+      { immediate: true },
+    );
+
+    async function downloadImport() {
+      if (!canExport(picked) || busy.value) return;
+      const filter = exportFilter(picked);
+      busy.value = 'download';
+      notice.value = '';
+      const result = await sendBackgroundMessage('download-staff-file', { filter });
+      busy.value = '';
+      if (!result.ok || !result.data?.base64) {
+        noticeError.value = true;
+        notice.value = translateError(result.error);
+        return;
+      }
+      const blob = base64ToBlob(result.data.base64, result.data.mime);
+      if (blob.size === 0) {
+        noticeError.value = true;
+        notice.value = 'File import không có dữ liệu.';
+        return;
+      }
+      chosenFile.value = new File([blob], result.data.name, { type: blob.type });
+      saveBlob(blob, result.data.name);
+      noticeError.value = false;
+      notice.value = `Đã tải ${result.data.name} và chọn file này để gửi sang SMIS.`;
+    }
+
+    function onPickFile(event) {
+      const file = event.target.files?.[0] ?? null;
+      event.target.value = '';
+      if (!file) return;
+      chosenFile.value = file;
+      noticeError.value = false;
+      notice.value = `Đã chọn ${file.name}.`;
+    }
+
+    async function askSend() {
+      if (!canSend(picked, chosenFile.value) || busy.value) return;
+      confirmOpen.value = true;
+      await nextTick();
+      dialogRef.value?.scrollIntoView({ block: 'center' });
+    }
+
+    async function sendToSmis() {
+      const file = chosenFile.value;
+      confirmOpen.value = false;
+      if (!canSend(picked, file) || busy.value) return;
+      busy.value = 'send';
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const result = await sendBackgroundMessage('upload-staff-file', {
+        cap: String(picked.capHoc),
+        file: {
+          name: file.name,
+          mime: file.type || 'application/vnd.ms-excel',
+          base64: bytesToBase64(bytes),
+        },
+      });
+      busy.value = '';
+      if (result.data?.resultFile) saveBlob(base64ToBlob(result.data.resultFile.base64, result.data.resultFile.mime), result.data.resultFile.name);
+      const returned = String(result.data?.notification?.message ?? '').trim();
+      if (!result.ok) {
+        showToast(returned || translateError(result.error), true);
+        return;
+      }
+      showToast(returned || 'Đã gửi file sang SMIS.', false);
+    }
+
+    function showToast(message, error) {
+      toast.value = { message, error };
+      window.clearTimeout(toastTimer);
+      toastTimer = window.setTimeout(() => {
+        toast.value = null;
+      }, 5000);
+    }
 
     return () =>
       h('div', { class: 'screen' }, [
         h('p', props.feature.desc),
-        h('p', { class: 'muted' }, `Đích ghi SMIS: ${describeSmisTarget(props.feature, session.cap)}`),
-        h(
-          'p',
-          { class: 'muted' },
-          'Ở trang Tra cứu cán bộ, tìm kiếm rồi tích chọn. Những cán bộ được chọn hiện trong danh sách này.',
-        ),
-        h('p', { class: 'pick-count' }, pickSummary(picked)),
-        picked.rows.length
-          ? h('div', { class: 'pick-wrap' }, [
-              h('table', { class: 'schema-table pick-table' }, [
-                h('thead', [
-                  h('tr', [
-                    h('th', 'STT'),
-                    h('th', 'Mã định danh'),
-                    h('th', 'Họ tên'),
-                    h('th', 'Nhóm chức vụ'),
-                    h('th', 'Vị trí việc làm'),
-                  ]),
-                ]),
-                h(
-                  'tbody',
-                  picked.rows.map((row) =>
-                    h('tr', { key: `${row.stt}-${row.code}-${row.maGiaoVien}` }, [
-                      h('td', row.stt),
-                      h('td', row.code || missing('Thiếu mã')),
-                      h('td', row.name || missing('Thiếu họ tên')),
-                      h('td', row.chucVu || '—'),
-                      h('td', row.position || '—'),
-                    ]),
-                  ),
-                ),
-              ]),
-            ])
-          : h('div', { class: 'empty-list' }, 'Chưa chọn cán bộ nào.'),
-        h('button', { type: 'button', class: 'primary-button', disabled: true }, 'Ghi sang SMIS'),
-        h('section', { class: 'schema' }, [
-          collapseToggle('Cấu trúc dữ liệu', schemaOpen),
-          schemaOpen.value ? staffSchema(session) : null,
+        filterFields(picked, { busy: busy.value, onDownload: downloadImport }),
+        capWarning(picked),
+        picked.rows.length ? staffTable(picked) : null,
+        fileSlot(chosenFile.value, fileInput, busy.value, onPickFile),
+        h('div', { class: 'row-actions staff-actions' }, [
+          h(
+            'button',
+            {
+              type: 'button',
+              class: 'primary-button',
+              disabled: Boolean(busy.value) || !canSend(picked, chosenFile.value),
+              'aria-busy': String(busy.value === 'send'),
+              onClick: askSend,
+            },
+            'Gửi sang SMIS',
+          ),
         ]),
+        busy.value === 'download' ? h('p', { class: 'muted', role: 'status' }, 'Đang tải file import…') : null,
+        notice.value ? h('p', { class: noticeError.value ? 'error' : 'ok', role: 'status' }, notice.value) : null,
+        confirmOpen.value ? confirmDialog(String(picked.capHoc), chosenFile.value?.name || '', confirmOpen, dialogRef, sendToSmis) : null,
+        busy.value === 'send' ? h('div', { class: 'screen-loading', role: 'status' }, [h('span', 'Đang gửi dữ liệu sang SMIS')]) : null,
+        toast.value ? h('p', { class: toast.value.error ? 'toast is-error' : 'toast', role: 'status' }, toast.value.message) : null,
       ]);
   },
 });
 
-function pickSummary(picked) {
-  if (!picked.rows.length) return 'Chưa có cán bộ trong danh sách đẩy sang SMIS.';
-  const missing = picked.rows.length - picked.readyCount;
-  const ready = `${picked.readyCount} cán bộ có mã định danh và họ tên, có thể đưa sang SMIS.`;
-  if (!missing) return ready;
-  return `${ready} ${missing} dòng còn thiếu mã hoặc họ tên.`;
+function canExport(picked) {
+  return Boolean(picked.maTruongHoc && picked.namHoc && ['1', '2', '3'].includes(String(picked.capHoc)));
+}
+
+function canSend(picked, file) {
+  return Boolean(file && ['1', '2', '3'].includes(String(picked.capHoc)));
+}
+
+function exportFilter(picked) {
+  return {
+    maTruongHoc: String(picked.maTruongHoc || '').trim(),
+    namHoc: String(picked.namHoc || '').trim(),
+    capHoc: String(picked.capHoc || '').trim(),
+    khoiHoc: String(picked.khoiHoc || '').trim(),
+    tenLopHoc: String(picked.tenLopHoc || '').trim(),
+    maPhanHieu: String(picked.maPhanHieu || '').trim(),
+  };
+}
+
+function capWarning(picked) {
+  if (!picked.capHoc || ['1', '2', '3'].includes(String(picked.capHoc))) return null;
+  return h('p', { class: 'error' }, 'SMIS chỉ ghi nhân sự cho cấp Tiểu học, THCS và THPT.');
+}
+
+function refreshWards(picked, readToken, writeToken) {
+  const namHoc = picked.namHoc;
+  if (!namHoc) {
+    picked.wardsLoading = false;
+    picked.setWards([]);
+    return;
+  }
+  const token = readToken() + 1;
+  writeToken(token);
+  picked.wardsLoading = true;
+  picked.wardError = '';
+  loadWardsByFilter({ namHoc })
+    .then((wards) => {
+      if (token !== readToken()) return;
+      picked.setWards(wards);
+    })
+    .catch((error) => {
+      if (token !== readToken()) return;
+      if (!picked.wards.length) {
+        picked.wardError = error instanceof Error ? error.message : 'Không tải được danh sách phường xã.';
+      }
+    })
+    .finally(() => {
+      if (token === readToken()) picked.wardsLoading = false;
+    });
+}
+
+function refreshSchools(picked, readToken, writeToken) {
+  const namHoc = picked.namHoc;
+  const capHoc = picked.capHoc;
+  const wardIds = picked.wardIds.slice();
+  picked.maTruongHoc = '';
+  picked.schools = [];
+  if (!namHoc || !capHoc) {
+    picked.schoolsLoading = false;
+    picked.schoolError = '';
+    return;
+  }
+  const token = readToken() + 1;
+  writeToken(token);
+  picked.schoolsLoading = true;
+  picked.schoolError = '';
+  loadSchoolsByFilter({ namHoc, capHoc, wardIds })
+    .then((schools) => {
+      if (token !== readToken()) return;
+      picked.setSchools(schools);
+    })
+    .catch((error) => {
+      if (token !== readToken()) return;
+      picked.setSchools([]);
+      picked.schoolError = error instanceof Error ? error.message : 'Không tải được danh sách trường.';
+    })
+    .finally(() => {
+      if (token === readToken()) picked.schoolsLoading = false;
+    });
+}
+
+function filterFields(picked, download) {
+  const schoolPlaceholder = picked.capHoc ? 'Chọn trường' : 'Chọn cấp học trước';
+  return h('div', { class: 'filter-grid' }, [
+    choiceField('Năm học', h(FilterSelect, {
+      modelValue: picked.namHoc,
+      'onUpdate:modelValue': (value) => picked.setChoice('namHoc', value),
+      placeholder: 'Chọn năm học',
+      options: picked.years.map((year) => ({ value: String(year.id), label: year.name })),
+    })),
+    choiceField('Cấp học', h(FilterSelect, {
+      modelValue: picked.capHoc,
+      'onUpdate:modelValue': (value) => picked.setChoice('capHoc', value),
+      placeholder: picked.caps.length ? 'Chọn cấp học' : 'Chưa có cấp học',
+      options: picked.caps.map((cap) => ({ value: String(cap.id), label: cap.name })),
+    })),
+    choiceField('Phường xã', h(FilterSelect, {
+      modelValue: picked.wardIds,
+      'onUpdate:modelValue': (value) => picked.setChoice('wardIds', Array.isArray(value) ? value : []),
+      multiple: true,
+      loading: picked.wardsLoading,
+      placeholder: picked.namHoc ? 'Chọn phường xã' : 'Chọn năm học trước',
+      options: picked.wards.map((ward) => ({ value: ward.id, label: ward.name })),
+    })),
+    choiceField('Trường học', h(FilterSelect, {
+      modelValue: picked.maTruongHoc,
+      'onUpdate:modelValue': (value) => picked.setChoice('maTruongHoc', value),
+      loading: picked.schoolsLoading,
+      disabled: !picked.capHoc,
+      placeholder: schoolPlaceholder,
+      options: picked.schools.map((school) => ({ value: school.ma, label: school.ten })),
+    })),
+    choiceField('Khối học', textField(picked.khoiHoc, 'Không bắt buộc', (value) => picked.setChoice('khoiHoc', value))),
+    choiceField('Tên lớp học', textField(picked.tenLopHoc, 'Không bắt buộc', (value) => picked.setChoice('tenLopHoc', value))),
+    choiceField('Mã phân hiệu', textField(picked.maPhanHieu, 'Không bắt buộc', (value) => picked.setChoice('maPhanHieu', value))),
+    h('label', { class: 'field field-action' }, [
+      h('span', '\u00a0'),
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'ghost-button',
+          disabled: Boolean(download.busy) || !canExport(picked),
+          'aria-busy': String(download.busy === 'download'),
+          onClick: download.onDownload,
+        },
+        download.busy === 'download' ? 'Đang tải file import' : 'Tải file import',
+      ),
+    ]),
+    picked.wardError ? h('p', { class: 'error filter-error' }, picked.wardError) : null,
+    picked.schoolError ? h('p', { class: 'error filter-error' }, picked.schoolError) : null,
+  ]);
+}
+
+function choiceField(label, control) {
+  return h('label', { class: 'field' }, [h('span', label), control]);
+}
+
+function textField(value, placeholder, onInput) {
+  return h('input', {
+    class: 'field-input',
+    type: 'text',
+    value,
+    placeholder,
+    onInput: (event) => onInput(event.target.value),
+  });
+}
+
+function staffTable(picked) {
+  return h('div', { class: 'pick-wrap' }, [
+    h('table', { class: 'schema-table pick-table' }, [
+      h('thead', [
+        h('tr', [h('th', 'STT'), h('th', 'Mã định danh'), h('th', 'Họ tên'), h('th', 'Nhóm chức vụ'), h('th', 'Vị trí việc làm')]),
+      ]),
+      h(
+        'tbody',
+        picked.rows.map((row) =>
+          h('tr', { key: `${row.stt}-${row.code}-${row.maGiaoVien}` }, [
+            h('td', row.stt),
+            h('td', row.code || missing('Thiếu mã')),
+            h('td', row.name || missing('Thiếu họ tên')),
+            h('td', row.chucVu || '—'),
+            h('td', row.position || '—'),
+          ]),
+        ),
+      ),
+    ]),
+  ]);
 }
 
 function missing(text) {
   return h('span', { class: 'pick-missing' }, text);
 }
 
-function collapseToggle(title, open) {
-  return h(
-    'button',
-    {
-      type: 'button',
-      class: 'collapse-toggle',
-      'aria-expanded': String(open.value),
-      onClick: () => {
-        open.value = !open.value;
+function fileSlot(file, input, busy, onPick) {
+  return h('div', { class: 'file-slot' }, [
+    h('p', file ? file.name : 'Chưa có file để gửi sang SMIS.'),
+    h(
+      'button',
+      {
+        type: 'button',
+        class: 'ghost-button',
+        disabled: Boolean(busy),
+        onClick: () => input.value?.click(),
       },
-    },
-    [
-      h('span', { class: 'collapse-title' }, title),
-      h(BaseIcon, { name: 'chevronRight', size: 18, class: open.value ? 'chevron is-open' : 'chevron' }),
-    ],
-  );
-}
-
-function scopeValue(session, name) {
-  if (name === 'cap') return session.cap;
-  if (name === 'nam_hoc') return session.year;
-  if (name === 'ma_phan_hieu') return session.phanHieuCode || (session.loggedIn ? '0' : '');
-  if (name === 'type1') return '0';
-  return '';
-}
-
-function staffSchema(session) {
-  return h('div', { class: 'collapse-body' }, [
-    h('h3', 'Tham số phạm vi'),
-    ...STAFF_SCOPE_PARAMS.map((param) =>
-      h('label', { class: 'field' }, [
-        h('span', `${param.label} · ${param.name}`),
-        h('input', {
-          class: 'field-input',
-          type: 'text',
-          readonly: true,
-          value: scopeValue(session, param.name),
-          placeholder: param.note,
-        }),
-      ]),
+      file ? 'Chọn file khác' : 'Chọn file',
     ),
-    h('h3', 'Mỗi dòng nhân sự'),
-    h('p', { class: 'muted' }, STAFF_ROW_SHAPE),
-    h('p', { class: 'muted' }, 'Mã định danh lấy từ moetCode, họ tên từ tenCanBo. Nhóm chức vụ (chucVu) chỉ để xem.'),
-    h('table', { class: 'schema-table' }, [
-      h('thead', [h('tr', [h('th', 'Trường'), h('th', 'Cột file'), h('th', 'Bắt buộc')])]),
-      h(
-        'tbody',
-        STAFF_ROW_FIELDS.map((field) =>
-          h('tr', { key: field.name }, [
-            h('td', field.name),
-            h('td', field.label),
-            h('td', field.required ? 'Có' : 'Không'),
-          ]),
-        ),
-      ),
-    ]),
+    h('input', {
+      ref: input,
+      class: 'file-input',
+      type: 'file',
+      accept: '.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      onChange: onPick,
+    }),
   ]);
+}
+
+function confirmDialog(cap, fileName, open, dialogRef, onConfirm) {
+  const target = `/C${cap}/GiaoVienImportExcel.aspx`;
+  return h('div', { class: 'confirm-backdrop' }, [
+    h(
+      'div',
+      {
+        ref: dialogRef,
+        class: 'confirm-dialog',
+        role: 'alertdialog',
+        'aria-modal': 'true',
+        'aria-labelledby': 'staff-confirm-title',
+      },
+      [
+        h('h3', { id: 'staff-confirm-title' }, 'Gửi sang SMIS'),
+        h('p', `Gửi file ${fileName} sang ${target}?`),
+        h('div', { class: 'row-actions' }, [
+          h('button', { type: 'button', class: 'ghost-button', onClick: () => { open.value = false; } }, 'Hủy'),
+          h('button', { type: 'button', class: 'primary-button', onClick: onConfirm }, 'Gửi'),
+        ]),
+      ],
+    ),
+  ]);
+}
+
+function saveBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name || 'GiaoVien.xls';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function base64ToBlob(value, mime) {
+  const binary = atob(value || '');
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return new Blob([bytes], { type: mime || 'application/vnd.ms-excel' });
+}
+
+function bytesToBase64(bytes) {
+  let binary = '';
+  const size = 0x2000;
+  for (let index = 0; index < bytes.length; index += size) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + size));
+  }
+  return btoa(binary);
 }

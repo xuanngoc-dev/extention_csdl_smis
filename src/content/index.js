@@ -45,9 +45,10 @@ async function main() {
     if (ui) return;
     const created = await createShadowRootUi(context, {
       name: UI_HOST_NAME,
-      onMount(container, _shadow, host) {
+      onMount(container, _shadow, host, popperHost) {
         host.style.setProperty('all', 'initial', 'important');
         const app = createApp(App);
+        app.provide('selectPopper', popperHost);
         app.use(createPinia());
         app.mount(container);
         return app;

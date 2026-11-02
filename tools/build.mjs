@@ -6,6 +6,10 @@ import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { build, context } from 'esbuild';
 
 const watch = process.argv.includes('--watch');
+const exportHtml = await readFile('docs/export-from-CSDLN.html', 'utf8');
+const exportBase = exportHtml.match(/const BASE_URL =\s*"([^"]+)"/)?.[1];
+const exportToken = exportHtml.match(/const TOKEN =\s*"([^"]+)"/)?.[1];
+if (!exportBase || !exportToken) throw new Error('Không đọc được hàm xuất giáo viên trong docs/export-from-CSDLN.html');
 const shared = {
   bundle: true,
   format: 'iife',
@@ -13,10 +17,19 @@ const shared = {
   charset: 'utf8',
   legalComments: 'none',
   logLevel: 'info',
+  loader: { '.css': 'text' },
 };
 const entries = [
-  { entryPoints: ['src/background/index.js'], outfile: 'build/background.js' },
+  {
+    entryPoints: ['src/background/index.js'],
+    outfile: 'build/background.js',
+    define: {
+      STAFF_EXPORT_BASE_URL: JSON.stringify(exportBase),
+      STAFF_EXPORT_TOKEN: JSON.stringify(exportToken),
+    },
+  },
   { entryPoints: ['src/page/staff-watch.js'], outfile: 'build/content-scripts/page-hook.js' },
+  { entryPoints: ['src/page/catalog-bridge.js'], outfile: 'build/content-scripts/catalog-bridge.js' },
   {
     entryPoints: ['src/content/index.js'],
     outfile: 'build/content-scripts/csdl.js',

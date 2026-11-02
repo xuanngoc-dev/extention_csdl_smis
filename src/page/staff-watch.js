@@ -4,6 +4,7 @@
  * Không tự gọi API. Không đọc mật khẩu.
  */
 import { PAGE_BRIDGE_TYPE } from '../shared/messages.js';
+import { readLookupFilters } from './lookup-filters.js';
 import {
   extractOfficialRecords,
   isOfficialList,
@@ -22,6 +23,7 @@ if (!window.__csdlStaffWatch) {
 function installStaffWatch() {
   let lastRecords = [];
   let lastKey = '';
+  let lastFilterKey = '';
 
   hookXhr(rememberSearch);
   hookFetch(rememberSearch);
@@ -39,8 +41,15 @@ function installStaffWatch() {
   window.setInterval(tick, 400);
   window.addEventListener('message', (event) => {
     if (event.source !== window || event.origin !== location.origin) return;
-    if (event.data?.type !== PAGE_BRIDGE_TYPE || event.data.action !== 'staff-selection-sync') return;
+    if (event.data?.type !== PAGE_BRIDGE_TYPE) return;
+    if (event.data.action === 'staff-filters-pull') {
+      lastFilterKey = '';
+      publishFilters();
+      return;
+    }
+    if (event.data.action !== 'staff-selection-sync') return;
     lastKey = '';
+    lastFilterKey = '';
     tick();
   });
 
@@ -59,6 +68,7 @@ function installStaffWatch() {
 
   function publishSelection() {
     if (!isOfficialLookupPath(location.pathname)) return;
+    publishFilters();
     const selected = readSelection(lastRecords);
     if (!selected) return;
     const rows = selected.map(slimOfficial);
@@ -73,6 +83,23 @@ function installStaffWatch() {
         onLookupPage: true,
         loaded: lastRecords.length,
         rows,
+      },
+      location.origin,
+    );
+  }
+
+  function publishFilters() {
+    const filters = readLookupFilters();
+    if (!filters) return;
+    const key = filterKey(filters);
+    if (key === lastFilterKey) return;
+    lastFilterKey = key;
+    window.postMessage(
+      {
+        type: PAGE_BRIDGE_TYPE,
+        action: 'staff-filters',
+        known: true,
+        ...filters,
       },
       location.origin,
     );
@@ -130,6 +157,18 @@ function xhrBody(xhr) {
   } catch {
     return '';
   }
+}
+
+function filterKey(filters) {
+  return [
+    filters.namHoc,
+    filters.provinceCode,
+    filters.capIds.join(','),
+    filters.wardIds.join(','),
+    filters.years.length,
+    filters.caps.length,
+    filters.wards.length,
+  ].join('|');
 }
 
 function readSelection(records) {

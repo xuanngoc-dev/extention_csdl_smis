@@ -26,6 +26,7 @@
   ],
   "host_permissions": [
     "https://dongbo.csdl.edu.vn/*",
+    "https://ioc.csdl.edu.vn/*",
     "https://smis.moet.edu.vn/*"
   ],
   "minimum_chrome_version": "116",
@@ -47,7 +48,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["content-scripts/csdl.css"],
+      "resources": ["content-scripts/csdl.css", "content-scripts/catalog-bridge.js"],
       "matches": ["https://dongbo.csdl.edu.vn/*"]
     }
   ]

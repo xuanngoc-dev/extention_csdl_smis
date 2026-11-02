@@ -1,3 +1,4 @@
+import elementCss from 'element-plus/dist/index.css';
 import { CSS_PATH } from '../../shared/messages.js';
 import { browserApi } from './browser-api.js';
 import { logger } from './logger.js';
@@ -17,9 +18,11 @@ export async function createShadowRootUi(context, options) {
   const host = document.createElement(options.name);
   const shadow = host.attachShadow({ mode: 'open' });
   const style = document.createElement('style');
-  style.textContent = `:host{all:initial !important;}\n${cssText}`;
+  style.textContent = `:host{all:initial !important;}\n${elementCss.replaceAll(':root', ':host')}\n${cssText}`;
+  const popperHost = document.createElement('div');
+  popperHost.className = 'select-popper-host';
   const container = document.createElement('div');
-  shadow.append(style, container);
+  shadow.append(style, container, popperHost);
   for (const type of ['keydown', 'keyup', 'keypress']) {
     shadow.addEventListener(type, (event) => event.stopPropagation());
   }
@@ -36,7 +39,7 @@ export async function createShadowRootUi(context, options) {
     if (removed) return;
     if (!document.body) throw new Error('Không gắn được UI: document.body chưa có');
     document.body.append(host);
-    app = options.onMount?.(container, shadow, host);
+    app = options.onMount?.(container, shadow, host, popperHost);
   };
   context.onInvalidated(remove);
   return { mount, remove };

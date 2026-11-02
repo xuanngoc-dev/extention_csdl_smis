@@ -129,6 +129,11 @@ export function parsePrimaryNotification(html) {
   return items.find((item) => item.type === 'error') || items.find((item) => item.type === 'success') || items.at(-1) || null;
 }
 
+export function extractPageTitle(html) {
+  const match = /<title>([^<]*)<\/title>/i.exec(html ?? '');
+  return match?.[1] ? decodeHtmlEntities(match[1]).trim() : '';
+}
+
 /** Tách khung delta của ASP.NET AJAX: length|type|id|content| */
 export function parseAspNetDelta(raw) {
   const empty = {

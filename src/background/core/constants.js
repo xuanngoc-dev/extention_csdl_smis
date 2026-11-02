@@ -41,6 +41,15 @@ export const SMIS_LEVEL_NAMES = {
   GDTX: 'Giáo dục thường xuyên',
 };
 
+/** Client state Telerik của trang SMIS, giống bước ghi nhân sự bên VNPT. */
+export const TELERIK_TSM_STATE =
+  ';;System.Web.Extensions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35:en-US:a8328cc8-0a99-4e41-8fe3-b58afac64e45:ea597d4b:b25378d2;Telerik.Web.UI, Version=2025.1.416.462, Culture=neutral, PublicKeyToken=121fae78165ba3d4:en-US:ced1f735-5c2a-4218-bd68-1813924fe936:16e4e7cd:f7645509:2003d0b8:24ee1bba:c128760b:1e771326:88144a7a:f46195d3:33715776:aa288e2d:258f1c72:58366029';
+
+/** rcbColumnFull trên GiaoVienImportExcel có 62 cột. Bước tải lên chọn tất cả. */
+export const STAFF_IMPORT_COLUMN_COUNT = 62;
+
+export const STAFF_UPLOAD_TIMEOUT_MS = 180000;
+
 export const SMIS_BROWSER_HEADERS = {
   Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
   'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.6,en;q=0.5',

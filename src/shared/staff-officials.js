@@ -70,6 +70,16 @@ export function mapOfficial(record) {
     position: textField(record, POSITION_KEYS),
     chucVu: textField(record, ['chucVu', 'tenChucVu', 'nhomChucVu']),
     maGiaoVien: textField(record, ['maGiaoVien']),
+    gender: textField(record, ['gioiTinh']),
+    birthDate: textField(record, ['ngaySinh']),
+    status: textField(record, ['trangThai']),
+    identity: textField(record, ['soCmnd', 'cccd', 'cmnd']),
+    email: textField(record, ['email']),
+    phone: textField(record, ['soDienThoaiDiDong', 'soDienThoai']),
+    ethnic: textField(record, ['danToc', 'tenDanToc', 'maDanToc']),
+    contract: textField(record, ['loaiHopDong']),
+    subject: textField(record, ['monDay', 'tenMonHoc', 'maMonHoc']),
+    staffType: textField(record, ['loaiCanBo']),
   };
 }
 

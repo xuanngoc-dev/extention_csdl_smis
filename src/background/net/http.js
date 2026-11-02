@@ -116,16 +116,34 @@ export function buildUploadFormData(inputs, uploadConfig, file) {
   return formData;
 }
 
-export async function postAspNetForm(url, html, uploadConfig, file) {
+export function isServerErrorPage(response) {
+  return /\/500\.aspx/i.test(response?.url ?? '');
+}
+
+export function emptyUploadFile() {
+  return { blob: new Blob([], { type: 'application/octet-stream' }), name: '' };
+}
+
+export async function postAspNetForm(url, html, uploadConfig, file, timeoutMs = REQUEST_TIMEOUT_MS) {
   const inputs = parseFormInputsById(html, 'form1');
   const viewState = inputs.find((input) => input.name === '__VIEWSTATE')?.value;
   const eventValidation = inputs.find((input) => input.name === '__EVENTVALIDATION')?.value;
   if (!viewState || !eventValidation) throw new Error('missing_viewstate_or_eventvalidation');
   return fetchWithDnrRule(
     url,
-    { method: 'POST', cache: 'no-store', body: buildUploadFormData(inputs, uploadConfig, file) },
+    {
+      method: 'POST',
+      cache: 'no-store',
+      body: buildUploadFormData(inputs, uploadConfig, file),
+      signal: AbortSignal.timeout(timeoutMs),
+    },
     { ...SMIS_BROWSER_HEADERS, Origin: SMIS_BASE_URL, Referer: url },
   );
+}
+
+export async function postUploadForm(url, html, uploadConfig, file, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const response = await postAspNetForm(url, html, uploadConfig, file, timeoutMs);
+  return { res: response, html: await response.text() };
 }
 
 export async function postAjax(url, body, timeoutMs = REQUEST_TIMEOUT_MS) {

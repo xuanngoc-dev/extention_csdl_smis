@@ -3,6 +3,7 @@ import { checkCsdlSession, refuseUnsurveyedSync } from './csdl/session.js';
 import { openSmisLogin } from './features/login-window.js';
 import { getSmisConfig, openSmisConfig } from './features/smis-config.js';
 import { checkSmisSession, logoutSmis } from './features/session.js';
+import { downloadStaffImport, uploadStaffFile } from './features/staff-sync.js';
 import { isCsdlHost, isCsdlLoginHref } from '../shared/page.js';
 
 export const ACTION_HANDLERS = {
@@ -15,6 +16,8 @@ export const ACTION_HANDLERS = {
   'open-smis-config': (_payload, sender) => openSmisConfig(sender.tab?.id ?? null),
   'check-csdl-session': (payload) => checkCsdlSession(payload),
   'prepare-sync': () => refuseUnsurveyedSync(),
+  'download-staff-file': (payload) => downloadStaffImport(payload),
+  'upload-staff-file': (payload) => uploadStaffFile(payload),
 };
 
 export function isAllowedSender(sender) {
