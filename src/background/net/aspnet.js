@@ -94,6 +94,28 @@ export function parseFormInputs(html) {
   return [...byName.values()];
 }
 
+export function mergeFormOverrides(inputs, overrides = {}, extraBlocks = []) {
+  const lookup = new Map();
+  for (const item of inputs) lookup.set(item.name, { ...item });
+  for (const [name, value] of Object.entries(overrides)) {
+    const current = lookup.get(name);
+    if (current) current.value = value;
+    else lookup.set(name, { name, value, type: 'hidden' });
+  }
+  if ('__VIEWSTATEFIELDCOUNT' in overrides) {
+    const count = parseInt(overrides.__VIEWSTATEFIELDCOUNT, 10) || 0;
+    for (const name of lookup.keys()) {
+      const match = /^__VIEWSTATE(\d+)$/.exec(name);
+      if (match && Number(match[1]) >= count) lookup.delete(name);
+    }
+  }
+  for (const block of extraBlocks) {
+    if (!block?.content) continue;
+    for (const item of parseFormInputs(block.content)) lookup.set(item.name, { ...item });
+  }
+  return [...lookup.values()];
+}
+
 export function parseFormInputsById(html, formId = 'form1') {
   const formHtml = extractFormHtml(html, formId);
   if (formHtml === null) throw new Error('form_not_found');

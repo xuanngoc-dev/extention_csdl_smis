@@ -146,6 +146,54 @@ export async function postUploadForm(url, html, uploadConfig, file, timeoutMs = 
   return { res: response, html: await response.text() };
 }
 
+export function buildFormBody(inputs, overrides = {}) {
+  const params = new URLSearchParams();
+  const seen = new Set();
+  let hasViewState = false;
+  let hasEventValidation = false;
+  for (const item of inputs) {
+    if (item.type === 'file') continue;
+    const value = item.name in overrides ? overrides[item.name] : item.value ?? '';
+    if (item.name === '__VIEWSTATE' && value) hasViewState = true;
+    if (item.name === '__EVENTVALIDATION' && value) hasEventValidation = true;
+    params.append(item.name, value ?? '');
+    seen.add(item.name);
+  }
+  for (const [name, value] of Object.entries(overrides)) {
+    if (seen.has(name)) continue;
+    if (name === '__VIEWSTATE' && value) hasViewState = true;
+    if (name === '__EVENTVALIDATION' && value) hasEventValidation = true;
+    params.append(name, value ?? '');
+  }
+  if (!hasViewState || !hasEventValidation) throw new Error('missing_viewstate_or_eventvalidation');
+  return params.toString();
+}
+
+export async function postSmisAjax(url, body, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const response = await fetchWithDnrRule(
+    url,
+    {
+      method: 'POST',
+      cache: 'no-store',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'X-MicrosoftAjax': 'Delta=true',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Cache-Control': 'no-cache',
+        Accept: '*/*',
+      },
+      body,
+      signal: AbortSignal.timeout(timeoutMs),
+    },
+    { ...SMIS_BROWSER_HEADERS, Origin: SMIS_BASE_URL, Referer: url },
+  );
+  if (isLoginRedirect(response)) return { response, text: '', delta: parseAspNetDelta(''), loggedOut: true };
+  const text = await response.text();
+  const delta = parseAspNetDelta(text);
+  const loggedOut = Boolean(delta.redirectUrl && /Login\.aspx/i.test(decodeURIComponent(delta.redirectUrl)));
+  return { response, text, delta, loggedOut };
+}
+
 export async function postAjax(url, body, timeoutMs = REQUEST_TIMEOUT_MS) {
   const response = await fetch(url, {
     method: 'POST',

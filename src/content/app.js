@@ -45,6 +45,7 @@ export const App = defineComponent({
     return () =>
       h('div', { class: 'csdl-root' }, [
         h('div', { class: 'launcher' }, [
+          ui.open ? h('div', { class: 'panel-backdrop', onClick: closePanel }) : null,
           ui.open ? h(Panel, { onClose: closePanel }) : null,
           h(
             'button',

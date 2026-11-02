@@ -11,7 +11,6 @@ export const HomeView = defineComponent({
     return () =>
       h('div', { class: 'home' }, [
         h(SessionCards),
-        h('p', { class: 'lead' }, 'Chức năng đồng bộ. Chưa ghi được cho đến khi có request đọc từ CSDL ngành.'),
         ...featureGroups().map((group) =>
           h('section', { class: 'group', key: group.key }, [
             h('h2', { class: 'group-title' }, group.title),

@@ -11,16 +11,15 @@ function checkboxState(rowCount) {
   });
 }
 
-/** Form Tải lên / Ghi / file kết quả của GiaoVienImportExcel, cùng khuôn với bản VNPT. */
-export function buildStaffImportSteps() {
-  const gridName = 'rcbColumnFull';
+/** Form Tải lên / Ghi / file kết quả. Nhân sự dùng rcbColumnFull, lớp học dùng rcbColumn. */
+export function buildGridImportSteps(gridName, columnCount) {
   const clientStateName = `ctl00_ContentPlaceHolder1_ctl00_${gridName}_ClientState`;
   const shared = {
     RadScriptManager1_TSM: TELERIK_TSM_STATE,
     __EVENTTARGET: '',
     __EVENTARGUMENT: '',
     [`ctl00$ContentPlaceHolder1$ctl00$${gridName}`]: 'Chọn tất cả',
-    [clientStateName]: checkboxState(STAFF_IMPORT_COLUMN_COUNT),
+    [clientStateName]: checkboxState(columnCount),
     config: 'ngang',
   };
   const pageSize = {
@@ -56,4 +55,12 @@ export function buildStaffImportSteps() {
       },
     },
   };
+}
+
+export function buildStaffImportSteps() {
+  return buildGridImportSteps('rcbColumnFull', STAFF_IMPORT_COLUMN_COUNT);
+}
+
+export function buildClassImportSteps() {
+  return buildGridImportSteps('rcbColumn', 21);
 }

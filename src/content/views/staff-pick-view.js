@@ -52,7 +52,7 @@ export const StaffPickView = defineComponent({
       const filter = exportFilter(picked);
       busy.value = 'download';
       notice.value = '';
-      const result = await sendBackgroundMessage('download-staff-file', { filter });
+      const result = await sendBackgroundMessage('download-staff-file', { kind: props.feature.key, filter });
       busy.value = '';
       if (!result.ok || !result.data?.base64) {
         noticeError.value = true;
@@ -94,6 +94,7 @@ export const StaffPickView = defineComponent({
       busy.value = 'send';
       const bytes = new Uint8Array(await file.arrayBuffer());
       const result = await sendBackgroundMessage('upload-staff-file', {
+        kind: props.feature.key,
         cap: String(picked.capHoc),
         file: {
           name: file.name,
@@ -124,7 +125,7 @@ export const StaffPickView = defineComponent({
         h('p', props.feature.desc),
         filterFields(picked, { busy: busy.value, onDownload: downloadImport }),
         capWarning(picked),
-        picked.rows.length ? staffTable(picked) : null,
+        props.feature.key === 'staff' && picked.rows.length ? staffTable(picked) : null,
         fileSlot(chosenFile.value, fileInput, busy.value, onPickFile),
         h('div', { class: 'row-actions staff-actions' }, [
           h(
@@ -141,7 +142,7 @@ export const StaffPickView = defineComponent({
         ]),
         busy.value === 'download' ? h('p', { class: 'muted', role: 'status' }, 'Đang tải file import…') : null,
         notice.value ? h('p', { class: noticeError.value ? 'error' : 'ok', role: 'status' }, notice.value) : null,
-        confirmOpen.value ? confirmDialog(String(picked.capHoc), chosenFile.value?.name || '', confirmOpen, dialogRef, sendToSmis) : null,
+        confirmOpen.value ? confirmDialog(smisTarget(props.feature, picked.capHoc), chosenFile.value?.name || '', confirmOpen, dialogRef, sendToSmis) : null,
         busy.value === 'send' ? h('div', { class: 'screen-loading', role: 'status' }, [h('span', 'Đang gửi dữ liệu sang SMIS')]) : null,
         toast.value ? h('p', { class: toast.value.error ? 'toast is-error' : 'toast', role: 'status' }, toast.value.message) : null,
       ]);
@@ -345,8 +346,11 @@ function fileSlot(file, input, busy, onPick) {
   ]);
 }
 
-function confirmDialog(cap, fileName, open, dialogRef, onConfirm) {
-  const target = `/C${cap}/GiaoVienImportExcel.aspx`;
+function smisTarget(feature, cap) {
+  return String(feature?.smisPath || '').replace('{cap}', String(cap || ''));
+}
+
+function confirmDialog(target, fileName, open, dialogRef, onConfirm) {
   return h('div', { class: 'confirm-backdrop' }, [
     h(
       'div',

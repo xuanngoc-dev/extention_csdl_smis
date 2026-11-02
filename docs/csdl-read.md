@@ -12,7 +12,7 @@ Tìm kiếm:
 
 Bộ lọc Nhân sự: năm học chọn từ 2020 đến năm hiện tại. Cấp học đọc `localStorage.list_cap_hoc`, mỗi bản ghi có `name` và `id`. Khi đã chọn năm học, extension gọi `POST /forward-api` với path `/internal-api/dmPhuongXa/filter`, method `GET`, data `start: 0`, `limit: 99999`, `trangthai: 1`, `namHoc`. Khi đã chọn cấp học, extension gọi `POST /forward-api` với path `/internal-api/dmTruongHoc/filterSchool` (kèm `maPhuongXaList`) để lấy danh sách trường. Khối, tên lớp và mã phân hiệu nhập thêm khi cần.
 
-Xuất giáo viên theo `docs/export-from-CSDLN.html`: `POST https://ioc.csdl.edu.vn/csdlgd-admin/exports/smis/giao-vien`, header `token`, body `namHoc`, `maTruongHoc`, `capHoc`, `khoiHoc`, `tenLopHoc`, `maPhanHieu`. Bước tải file chỉ lưu response về máy. Bước gửi SMIS nhận file đã chọn, có thể là file vừa tải hoặc file người dùng tự chọn.
+Xuất theo `docs/export-from-CSDLN.html`: `POST https://ioc.csdl.edu.vn/csdlgd-admin/exports/smis/{giao-vien|lop-hoc|hoc-sinh}`, header `token`, body `namHoc`, `maTruongHoc`, `capHoc`, `khoiHoc`, `tenLopHoc`, `maPhanHieu`. Bước tải file chỉ lưu response về máy. Bước gửi SMIS nhận file đã chọn. Nhân sự vào `GiaoVienImportExcel.aspx`, lớp vào `LopImportExcel.aspx` (Tải lên rồi Ghi). Học sinh vào `HocSinhImportExcel.aspx` (Tải lên, `chkImport`, `btnOK`).
 
 Danh sách đang tích trên bảng vẫn hiện trong panel. Ô chọn là checkbox thường, giá trị `canBoTheoNamId`, component giữ các id đó trong `lsDelete`. Không phải selection mặc định của el-table. Đổi trang hoặc tìm lại thì trang xóa các id đã chọn.
 

@@ -57,7 +57,7 @@ export const Panel = defineComponent({
               ])
             : null,
           h('div', { class: 'panel-body' }, [
-            feature ? h(feature.key === 'staff' ? StaffPickView : FeatureHoldView, { feature }) : h(HomeView),
+            feature ? h(['staff', 'class', 'student'].includes(feature.key) ? StaffPickView : FeatureHoldView, { key: feature.key, feature }) : h(HomeView),
           ]),
         ],
       );

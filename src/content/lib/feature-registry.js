@@ -21,7 +21,7 @@ export const FEATURE_ITEMS = [
   {
     key: 'class',
     title: 'Lớp học',
-    desc: 'Tên lớp, khối, điểm trường',
+    desc: 'Tải file import lớp học, rồi gửi file đã chọn sang SMIS',
     group: 'directory',
     icon: 'bank',
     tone: 'violet',
@@ -30,7 +30,7 @@ export const FEATURE_ITEMS = [
   {
     key: 'student',
     title: 'Học sinh',
-    desc: 'Mã định danh, họ tên, lớp, theo khối',
+    desc: 'Tải file import học sinh, rồi gửi file đã chọn sang SMIS',
     group: 'directory',
     icon: 'person',
     tone: 'teal',

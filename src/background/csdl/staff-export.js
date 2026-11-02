@@ -6,9 +6,9 @@
 
 const EXPORT_TIMEOUT_MS = 120000;
 
-export async function exportTeacherFile(filter) {
+export async function exportTeacherFile(filter, path = 'giao-vien') {
   const request = exportBody(filter);
-  const response = await fetch(`${STAFF_EXPORT_BASE_URL}/giao-vien`, {
+  const response = await fetch(`${STAFF_EXPORT_BASE_URL}/${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -25,7 +25,7 @@ export async function exportTeacherFile(filter) {
     error.detail = `HTTP ${response.status}${detail ? `: ${detail}` : ''}`;
     throw error;
   }
-  const name = fileNameFromDisposition(response.headers.get('Content-Disposition')) || defaultFileName(request);
+  const name = fileNameFromDisposition(response.headers.get('Content-Disposition')) || defaultFileName(path, request);
   return {
     blob: new Blob([bytes], { type: response.headers.get('Content-Type') || 'application/vnd.ms-excel' }),
     name,
@@ -48,8 +48,8 @@ function exportBody(filter) {
   };
 }
 
-function defaultFileName(request) {
-  const parts = ['giao-vien', request.maTruongHoc, request.namHoc, `cap-${request.capHoc}`];
+function defaultFileName(path, request) {
+  const parts = [path, request.maTruongHoc, request.namHoc, `cap-${request.capHoc}`];
   if (request.khoiHoc != null) parts.push(`khoi-${request.khoiHoc}`);
   if (request.tenLopHoc) parts.push(`lop-${request.tenLopHoc}`);
   if (request.maPhanHieu) parts.push(`phan-hieu-${request.maPhanHieu}`);
