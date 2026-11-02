@@ -1,9 +1,9 @@
-import { defineComponent, h, nextTick, onUnmounted, ref, watch } from 'vue';
+import { Teleport, defineComponent, h, inject, nextTick, ref, watch } from 'vue';
 import { ElForm, ElFormItem } from 'element-plus/es/components/form/index.mjs';
 import { FilterSelect } from '../components/filter-select.js';
+import { base64ToBlob, saveBlob } from '../lib/blob-file.js';
 import { translateError } from '../lib/errors.js';
 import { sendBackgroundMessage } from '../lib/message-bridge.js';
-import { readStoredCaps } from '../lib/staff-catalog.js';
 import { loadSchoolsByFilter, loadWardsByFilter } from '../lib/school-filter.js';
 import { useStaffPickStore } from '../stores/staff-pick.js';
 
@@ -14,6 +14,7 @@ export const StaffPickView = defineComponent({
   },
   setup(props) {
     const picked = useStaffPickStore();
+    const popperHost = inject('selectPopper', null);
     const busy = ref('');
     const confirmOpen = ref(false);
     const dialogRef = ref(null);
@@ -22,12 +23,8 @@ export const StaffPickView = defineComponent({
     const chosenFile = ref(null);
     const notice = ref('');
     const noticeError = ref(false);
-    const toast = ref(null);
-    let toastTimer = 0;
     let schoolLoad = 0;
     let wardLoad = 0;
-    picked.loadCaps(readStoredCaps());
-    onUnmounted(() => window.clearTimeout(toastTimer));
 
     watch(
       () => picked.namHoc,
@@ -50,7 +47,7 @@ export const StaffPickView = defineComponent({
     );
 
     async function downloadImport() {
-      if (busy.value) return;
+      if (busy.value || picked.sendActive) return;
       if (!(await validateFields(formRef.value, ['namHoc', 'capHoc', 'maTruongHoc']))) return;
       const filter = exportFilter(picked);
       busy.value = 'download';
@@ -84,7 +81,7 @@ export const StaffPickView = defineComponent({
     }
 
     async function askSend() {
-      if (busy.value) return;
+      if (busy.value || picked.sendActive) return;
       const fieldsOk = await validateFields(formRef.value, ['namHoc', 'capHoc', 'maTruongHoc']);
       if (!chosenFile.value) {
         noticeError.value = true;
@@ -94,44 +91,27 @@ export const StaffPickView = defineComponent({
       notice.value = '';
       confirmOpen.value = true;
       await nextTick();
-      dialogRef.value?.scrollIntoView({ block: 'center' });
+      dialogRef.value?.focus();
     }
 
-    async function sendToSmis() {
+    async function openFailurePage() {
+      const url = picked.sendFailure?.pageUrl;
+      if (!url) return;
+      await sendBackgroundMessage('open-smis-tab', { url });
+    }
+
+    function sendToSmis() {
       const file = chosenFile.value;
       confirmOpen.value = false;
-      if (!canSend(picked, file) || busy.value) return;
-      busy.value = 'send';
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const result = await sendBackgroundMessage('upload-staff-file', {
-        kind: props.feature.key,
-        cap: String(picked.capHoc),
-        file: {
-          name: file.name,
-          mime: file.type || 'application/vnd.ms-excel',
-          base64: bytesToBase64(bytes),
-        },
-      });
-      busy.value = '';
-      if (result.data?.resultFile) saveBlob(base64ToBlob(result.data.resultFile.base64, result.data.resultFile.mime), result.data.resultFile.name);
-      const returned = String(result.data?.notification?.message ?? '').trim();
-      if (!result.ok) {
-        showToast(returned || translateError(result.error), true);
-        return;
-      }
-      showToast(returned || 'Đã gửi file sang SMIS.', false);
+      if (!canSend(picked, file) || busy.value || picked.sendActive) return;
+      picked.uploadToSmis({ key: props.feature.key, cap: String(picked.capHoc), file });
     }
 
-    function showToast(message, error) {
-      toast.value = { message, error };
-      window.clearTimeout(toastTimer);
-      toastTimer = window.setTimeout(() => {
-        toast.value = null;
-      }, 5000);
-    }
-
-    return () =>
-      h('div', { class: 'screen' }, [
+    return () => {
+      const sending = picked.sendActive && picked.sendKey === props.feature.key;
+      const sendNotice = !sending && picked.sendKey === props.feature.key ? picked.sendNotice : '';
+      const failure = !sending && picked.sendFailure?.key === props.feature.key ? picked.sendFailure : null;
+      return h('div', { class: 'screen' }, [
         h('p', props.feature.desc),
         filterFields(picked, formRef, { busy: busy.value, onDownload: downloadImport }),
         props.feature.key === 'staff' && picked.rows.length ? staffTable(picked) : null,
@@ -142,8 +122,8 @@ export const StaffPickView = defineComponent({
             {
               type: 'button',
               class: 'primary-button',
-              disabled: Boolean(busy.value),
-              'aria-busy': String(busy.value === 'send'),
+              disabled: Boolean(busy.value || sending),
+              'aria-busy': String(sending),
               onClick: askSend,
             },
             'Gửi sang SMIS',
@@ -151,10 +131,17 @@ export const StaffPickView = defineComponent({
         ]),
         busy.value === 'download' ? h('p', { class: 'muted', role: 'status' }, 'Đang tải file import…') : null,
         notice.value ? h('p', { class: noticeError.value ? 'error' : 'ok', role: 'status' }, notice.value) : null,
-        confirmOpen.value ? confirmDialog(smisTarget(props.feature, picked.capHoc), chosenFile.value?.name || '', confirmOpen, dialogRef, sendToSmis) : null,
-        busy.value === 'send' ? h('div', { class: 'screen-loading', role: 'status' }, [h('span', 'Đang gửi dữ liệu sang SMIS')]) : null,
-        toast.value ? h('p', { class: toast.value.error ? 'toast is-error' : 'toast', role: 'status' }, toast.value.message) : null,
+        confirmOpen.value ? confirmDialog(smisTarget(props.feature, picked.capHoc), chosenFile.value?.name || '', confirmOpen, dialogRef, popperHost, sendToSmis) : null,
+        failure ? failureDialog(failure, popperHost, () => picked.clearSendFailure(), openFailurePage) : null,
+        sending ? h('div', { class: 'screen-loading', role: 'status' }, [
+          h('div', { class: 'screen-loading-card' }, [
+            h('span', { class: 'spinner', 'aria-hidden': 'true' }),
+            h('span', 'Đang gửi dữ liệu sang SMIS'),
+          ]),
+        ]) : null,
+        sendNotice ? h('p', { class: picked.sendNoticeError ? 'toast is-error' : 'toast', role: 'status' }, sendNotice) : null,
       ]);
+    };
   },
 });
 
@@ -278,7 +265,7 @@ function filterFields(picked, formRef, download) {
       formField(2, 'Cấp học', 'capHoc', true, h(FilterSelect, {
         modelValue: picked.capHoc,
         'onUpdate:modelValue': (value) => picked.setChoice('capHoc', value),
-        placeholder: picked.caps.length ? 'Chọn cấp học' : 'Chưa có cấp học',
+        placeholder: 'Chọn cấp học',
         options: picked.caps.map((cap) => ({ value: String(cap.id), label: cap.name })),
       })),
       formField(3, 'Phường xã', '', false, h(FilterSelect, {
@@ -396,16 +383,23 @@ function smisTarget(feature, cap) {
   return String(feature?.smisPath || '').replace('{cap}', String(cap || ''));
 }
 
-function confirmDialog(target, fileName, open, dialogRef, onConfirm) {
-  return h('div', { class: 'confirm-backdrop' }, [
+function confirmDialog(target, fileName, open, dialogRef, popperHost, onConfirm) {
+  const dialog = h('div', { class: 'confirm-backdrop', onClick: () => { open.value = false; } }, [
     h(
       'div',
       {
         ref: dialogRef,
         class: 'confirm-dialog',
+        tabindex: '-1',
         role: 'alertdialog',
         'aria-modal': 'true',
         'aria-labelledby': 'staff-confirm-title',
+        onClick: (event) => event.stopPropagation(),
+        onKeydown: (event) => {
+          if (event.key !== 'Escape') return;
+          event.stopPropagation();
+          open.value = false;
+        },
       },
       [
         h('h3', { id: 'staff-confirm-title' }, 'Gửi sang SMIS'),
@@ -417,31 +411,38 @@ function confirmDialog(target, fileName, open, dialogRef, onConfirm) {
       ],
     ),
   ]);
+  return popperHost ? h(Teleport, { to: popperHost }, [dialog]) : dialog;
 }
 
-function saveBlob(blob, name) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = name || 'GiaoVien.xls';
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+function failureDialog(failure, popperHost, onClose, onOpen) {
+  const dialog = h('div', { class: 'confirm-backdrop', onClick: onClose }, [
+    h(
+      'div',
+      {
+        class: 'confirm-dialog',
+        tabindex: '-1',
+        role: 'alertdialog',
+        'aria-modal': 'true',
+        'aria-labelledby': 'staff-failure-title',
+        onClick: (event) => event.stopPropagation(),
+        onKeydown: (event) => {
+          if (event.key !== 'Escape') return;
+          event.stopPropagation();
+          onClose();
+        },
+      },
+      [
+        h('h3', { id: 'staff-failure-title' }, 'Gửi thất bại'),
+        h('p', failure.detail || 'SMIS không nhận dữ liệu.'),
+        h('div', { class: 'row-actions' }, [
+          h('button', { type: 'button', class: 'ghost-button', onClick: onClose }, 'Đóng'),
+          failure.pageUrl
+            ? h('button', { type: 'button', class: 'primary-button', onClick: onOpen }, 'Mở trang SMIS')
+            : null,
+        ]),
+      ],
+    ),
+  ]);
+  return popperHost ? h(Teleport, { to: popperHost }, [dialog]) : dialog;
 }
 
-function base64ToBlob(value, mime) {
-  const binary = atob(value || '');
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-  return new Blob([bytes], { type: mime || 'application/vnd.ms-excel' });
-}
-
-function bytesToBase64(bytes) {
-  let binary = '';
-  const size = 0x2000;
-  for (let index = 0; index < bytes.length; index += size) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + size));
-  }
-  return btoa(binary);
-}

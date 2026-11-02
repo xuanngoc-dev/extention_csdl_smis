@@ -6,6 +6,9 @@ export const useNavStore = defineStore('nav', {
     openFeature(feature) {
       this.activeKey = feature.key;
     },
+    show(key) {
+      this.activeKey = key || '';
+    },
     back() {
       this.activeKey = '';
     },

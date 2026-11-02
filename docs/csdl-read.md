@@ -10,7 +10,7 @@ Tìm kiếm:
 - Path: `/csdlgd-admin/giaoVien/search3`
 - Body do trang gửi, gồm `start`, `limit`, `namHoc`, `keyword`, `loaiCanBo`, `colExcels`, `maTruongs`, … Extension không tự gửi request này.
 
-Bộ lọc Nhân sự: năm học chọn từ 2020 đến năm hiện tại. Cấp học đọc `localStorage.list_cap_hoc`, mỗi bản ghi có `name` và `id`. Khi đã chọn năm học, extension gọi `POST /forward-api` với path `/internal-api/dmPhuongXa/filter`, method `GET`, data `start: 0`, `limit: 99999`, `trangthai: 1`, `namHoc`. Khi đã chọn cấp học, extension gọi `POST /forward-api` với path `/internal-api/dmTruongHoc/filterSchool` (kèm `maPhuongXaList`) để lấy danh sách trường. Khối, tên lớp và mã phân hiệu nhập thêm khi cần.
+Bộ lọc Nhân sự: năm học chọn từ 2020 đến năm hiện tại. Cấp học chỉ có Tiểu học (1), THCS (2) và THPT (3). Khi đã chọn năm học, extension gọi `POST /forward-api` với path `/internal-api/dmPhuongXa/filter`, method `GET`, data `start: 0`, `limit: 99999`, `trangthai: 1`, `namHoc`. Khi đã chọn cấp học, extension gọi `POST /forward-api` với path `/internal-api/dmTruongHoc/filterSchool` (kèm `maPhuongXaList`) để lấy danh sách trường. Khối, tên lớp và mã phân hiệu nhập thêm khi cần.
 
 Xuất theo `docs/export-from-CSDLN.html`: `POST https://ioc.csdl.edu.vn/csdlgd-admin/exports/smis/{giao-vien|lop-hoc|hoc-sinh}`, header `token`, body `namHoc`, `maTruongHoc`, `capHoc`, `khoiHoc`, `tenLopHoc`, `maPhanHieu`. Bước tải file chỉ lưu response về máy. Bước gửi SMIS nhận file đã chọn. Nhân sự vào `GiaoVienImportExcel.aspx`, lớp vào `LopImportExcel.aspx` (Tải lên rồi Ghi). Học sinh vào `HocSinhImportExcel.aspx` (Tải lên, `chkImport`, `btnOK`).
 

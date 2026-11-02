@@ -65,11 +65,31 @@ export async function fetchWithDnrRule(url, requestInit, extraHeaders = {}) {
   }
 }
 
-export async function fetchSmisPage(url) {
+export function signalWithTimeout(timeoutMs, signal) {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  if (!signal) return timeout;
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any([timeout, signal]);
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal.aborted || timeout.aborted) {
+    controller.abort();
+    return controller.signal;
+  }
+  signal.addEventListener('abort', abort, { once: true });
+  timeout.addEventListener('abort', abort, { once: true });
+  return controller.signal;
+}
+
+export function isAbortError(error, signal) {
+  return Boolean(signal?.aborted || error?.name === 'AbortError');
+}
+
+export async function fetchSmisPage(url, signal) {
   let response;
   try {
-    response = await fetchWithDnrRule(url, { method: 'GET', cache: 'no-store' });
-  } catch {
+    response = await fetchWithDnrRule(url, { method: 'GET', cache: 'no-store', signal });
+  } catch (error) {
+    if (isAbortError(error, signal)) throw error;
     return { ok: false, error: 'smis_unreachable' };
   }
   if (isLoginRedirect(response)) return { ok: false, error: 'smis_not_logged_in', response };
@@ -124,7 +144,7 @@ export function emptyUploadFile() {
   return { blob: new Blob([], { type: 'application/octet-stream' }), name: '' };
 }
 
-export async function postAspNetForm(url, html, uploadConfig, file, timeoutMs = REQUEST_TIMEOUT_MS) {
+export async function postAspNetForm(url, html, uploadConfig, file, timeoutMs = REQUEST_TIMEOUT_MS, signal) {
   const inputs = parseFormInputsById(html, 'form1');
   const viewState = inputs.find((input) => input.name === '__VIEWSTATE')?.value;
   const eventValidation = inputs.find((input) => input.name === '__EVENTVALIDATION')?.value;
@@ -135,14 +155,14 @@ export async function postAspNetForm(url, html, uploadConfig, file, timeoutMs = 
       method: 'POST',
       cache: 'no-store',
       body: buildUploadFormData(inputs, uploadConfig, file),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: signalWithTimeout(timeoutMs, signal),
     },
     { ...SMIS_BROWSER_HEADERS, Origin: SMIS_BASE_URL, Referer: url },
   );
 }
 
-export async function postUploadForm(url, html, uploadConfig, file, timeoutMs = REQUEST_TIMEOUT_MS) {
-  const response = await postAspNetForm(url, html, uploadConfig, file, timeoutMs);
+export async function postUploadForm(url, html, uploadConfig, file, timeoutMs = REQUEST_TIMEOUT_MS, signal) {
+  const response = await postAspNetForm(url, html, uploadConfig, file, timeoutMs, signal);
   return { res: response, html: await response.text() };
 }
 
@@ -169,7 +189,7 @@ export function buildFormBody(inputs, overrides = {}) {
   return params.toString();
 }
 
-export async function postSmisAjax(url, body, timeoutMs = REQUEST_TIMEOUT_MS) {
+export async function postSmisAjax(url, body, timeoutMs = REQUEST_TIMEOUT_MS, signal) {
   const response = await fetchWithDnrRule(
     url,
     {
@@ -183,7 +203,7 @@ export async function postSmisAjax(url, body, timeoutMs = REQUEST_TIMEOUT_MS) {
         Accept: '*/*',
       },
       body,
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: signalWithTimeout(timeoutMs, signal),
     },
     { ...SMIS_BROWSER_HEADERS, Origin: SMIS_BASE_URL, Referer: url },
   );

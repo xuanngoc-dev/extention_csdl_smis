@@ -10,19 +10,9 @@ export function schoolYearOptions(now = new Date()) {
   return years;
 }
 
-/** Cấp học do trang CSDL ngành ghi vào localStorage, mỗi bản ghi có name và id. */
-export function readStoredCaps() {
-  let parsed;
-  try {
-    parsed = JSON.parse(localStorage.getItem('list_cap_hoc') || 'null');
-  } catch {
-    return [];
-  }
-  if (!Array.isArray(parsed)) return [];
-  return parsed
-    .map((item) => ({
-      id: String(item?.id ?? '').trim(),
-      name: String(item?.name ?? '').trim(),
-    }))
-    .filter((item) => item.id && item.name);
-}
+/** Ba cấp ghi được sang SMIS. id trùng mã cấp 1, 2, 3. */
+export const SCHOOL_LEVELS = [
+  { id: '1', name: 'Tiểu học' },
+  { id: '2', name: 'THCS' },
+  { id: '3', name: 'THPT' },
+];

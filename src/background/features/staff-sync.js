@@ -6,7 +6,7 @@ import { SMIS_BASE_URL, SMIS_BROWSER_HEADERS, STAFF_UPLOAD_TIMEOUT_MS } from '..
 import { toSyncErrorCode } from '../core/errors.js';
 import { exportTeacherFile } from '../csdl/staff-export.js';
 import { extractPageTitle, mergeFormOverrides, parseFormInputsById, parseNotifications, parsePrimaryNotification } from '../net/aspnet.js';
-import { buildFormBody, buildUploadFormData, emptyUploadFile, fetchSmisPage, fetchWithDnrRule, isLoginRedirect, isServerErrorPage, postAspNetForm, postSmisAjax, postUploadForm } from '../net/http.js';
+import { buildFormBody, buildUploadFormData, emptyUploadFile, fetchSmisPage, fetchWithDnrRule, isLoginRedirect, isServerErrorPage, postAspNetForm, postSmisAjax, postUploadForm, signalWithTimeout } from '../net/http.js';
 import { buildClassImportSteps, buildStaffImportSteps } from '../net/staff-form.js';
 import { buildStudentCheckOverrides, buildStudentOkOverrides, buildStudentResultStep, buildStudentUploadStep } from '../net/student-form.js';
 
@@ -57,23 +57,26 @@ export async function downloadStaffImport(payload) {
   }
 }
 
-export async function uploadStaffFile(payload) {
+export async function uploadStaffFile(payload, signal) {
   try {
-    return await runStaffUpload(payload);
+    if (signal?.aborted) return { ok: false, error: 'staff_send_cancelled' };
+    return await runStaffUpload(payload, signal);
   } catch (error) {
+    if (signal?.aborted) return { ok: false, error: 'staff_send_cancelled' };
     console.log('[csdl][sync-staff]', error);
     const code = error instanceof Error && error.message.startsWith('staff_') ? error.message : toSyncErrorCode(error);
-    return { ok: false, error: code };
+    return { ok: false, error: code, data: { pageUrl: smisImportUrl(payload) } };
   }
 }
 
-async function runStaffUpload(payload) {
+async function runStaffUpload(payload, signal) {
   const logs = [];
   const note = (message) => {
     logs.push(message);
     console.log('[csdl][sync-staff]', message);
   };
-  const fail = (error, data = {}) => ({ ok: false, error, data: { ...data, logs } });
+  const pageUrl = smisImportUrl(payload);
+  const fail = (error, data = {}) => ({ ok: false, error, data: { ...data, logs, pageUrl } });
 
   const cap = String(payload?.cap ?? '');
   if (!['1', '2', '3'].includes(cap)) return fail('staff_cap_unsupported');
@@ -88,16 +91,15 @@ async function runStaffUpload(payload) {
   note(`Gửi file ${file.name}, ${file.bytes} byte, cấp ${cap}`);
 
   const kind = importKind(payload?.kind);
-  const pageUrl = `${SMIS_BASE_URL}/C${cap}/${kind.page}`;
   if (payload?.kind === 'student' || kind.page.startsWith('HocSinh')) {
-    return runStudentUpload({ pageUrl, file, note, fail, resultName: kind.resultName });
+    return runStudentUpload({ pageUrl, file, note, fail, resultName: kind.resultName, signal });
   }
-  const page = await fetchSmisPage(pageUrl);
+  const page = await fetchSmisPage(pageUrl, signal);
   note(`GET ${pageUrl} -> ${page.ok ? 'ok' : page.error}`);
   if (!page.ok) return fail(page.error);
 
   const steps = kind.steps();
-  const uploaded = await postUploadForm(pageUrl, page.html, steps.upload, file, STAFF_UPLOAD_TIMEOUT_MS);
+  const uploaded = await postUploadForm(pageUrl, page.html, steps.upload, file, STAFF_UPLOAD_TIMEOUT_MS, signal);
   notePage('Tải lên', uploaded, note);
   if (isLoginRedirect(uploaded.res)) return fail('smis_not_logged_in');
   if (isServerErrorPage(uploaded.res)) return fail('step1_server_error');
@@ -107,7 +109,7 @@ async function runStaffUpload(payload) {
   }
   if (!uploaded.html.includes('bt_EXCELtoSQL')) return fail('step1_no_write_button');
 
-  const written = await postUploadForm(pageUrl, uploaded.html, steps.write, emptyUploadFile(), STAFF_UPLOAD_TIMEOUT_MS);
+  const written = await postUploadForm(pageUrl, uploaded.html, steps.write, emptyUploadFile(), STAFF_UPLOAD_TIMEOUT_MS, signal);
   notePage('Ghi', written, note);
   if (isLoginRedirect(written.res)) return fail('smis_not_logged_in');
   if (isServerErrorPage(written.res)) return fail('step2_server_error');
@@ -115,7 +117,7 @@ async function runStaffUpload(payload) {
 
   const notification = parsePrimaryNotification(written.html);
   if (!notification) note('Bước Ghi không có notification().');
-  const resultFile = await fetchResultFile(pageUrl, written.html, steps, note, kind.resultName);
+  const resultFile = await fetchResultFile(pageUrl, written.html, steps, note, kind.resultName, signal);
   const data = {
     notification,
     title: extractPageTitle(written.html),
@@ -131,11 +133,17 @@ function importKind(key) {
   return IMPORT_KINDS[key] ?? IMPORT_KINDS.staff;
 }
 
-async function runStudentUpload({ pageUrl, file, note, fail, resultName }) {
-  const page = await fetchSmisPage(pageUrl);
+function smisImportUrl(payload) {
+  const cap = String(payload?.cap ?? '');
+  if (!['1', '2', '3'].includes(cap)) return '';
+  return `${SMIS_BASE_URL}/C${cap}/${importKind(payload?.kind).page}`;
+}
+
+async function runStudentUpload({ pageUrl, file, note, fail, resultName, signal }) {
+  const page = await fetchSmisPage(pageUrl, signal);
   note(`GET ${pageUrl} -> ${page.ok ? 'ok' : page.error}`);
   if (!page.ok) return fail(page.error);
-  const uploaded = await postUploadForm(pageUrl, page.html, buildStudentUploadStep(), file, STAFF_UPLOAD_TIMEOUT_MS);
+  const uploaded = await postUploadForm(pageUrl, page.html, buildStudentUploadStep(), file, STAFF_UPLOAD_TIMEOUT_MS, signal);
   notePage('Tải lên', uploaded, note);
   if (isLoginRedirect(uploaded.res)) return fail('smis_not_logged_in');
   if (isServerErrorPage(uploaded.res)) return fail('step1_server_error');
@@ -149,7 +157,7 @@ async function runStudentUpload({ pageUrl, file, note, fail, resultName }) {
   } catch {
     return fail('form_not_found');
   }
-  const checked = await postSmisAjax(pageUrl, buildFormBody(inputs, buildStudentCheckOverrides()), 60000);
+  const checked = await postSmisAjax(pageUrl, buildFormBody(inputs, buildStudentCheckOverrides()), 60000, signal);
   note(`POST chkImport -> ${checked.response?.status ?? 0}`);
   if (checked.loggedOut || isLoginRedirect(checked.response)) return fail('smis_not_logged_in');
   if (isServerErrorPage(checked.response) || !checked.response.ok || !checked.delta.ok || checked.delta.errorMessage) {
@@ -158,7 +166,7 @@ async function runStudentUpload({ pageUrl, file, note, fail, resultName }) {
   const merged = checked.delta.isFullHtml
     ? parseFormInputsById(checked.text, 'form1')
     : mergeFormOverrides(inputs, checked.delta.hiddenFields, checked.delta.updatePanels);
-  const written = await postSmisAjax(pageUrl, buildFormBody(merged, buildStudentOkOverrides()), 120000);
+  const written = await postSmisAjax(pageUrl, buildFormBody(merged, buildStudentOkOverrides()), 120000, signal);
   note(`POST btnOK -> ${written.response?.status ?? 0}`);
   if (written.loggedOut || isLoginRedirect(written.response)) return fail('smis_not_logged_in');
   if (isServerErrorPage(written.response) || !written.response.ok) return fail('step2_server_error');
@@ -167,7 +175,7 @@ async function runStudentUpload({ pageUrl, file, note, fail, resultName }) {
   const afterOk = written.delta.isFullHtml
     ? parseFormInputsById(written.text, 'form1')
     : mergeFormOverrides(merged, written.delta.hiddenFields, written.delta.updatePanels);
-  const resultFile = await fetchStudentResult(pageUrl, afterOk, note, resultName);
+  const resultFile = await fetchStudentResult(pageUrl, afterOk, note, resultName, signal);
   const data = {
     notification,
     title: extractPageTitle(written.text),
@@ -177,7 +185,7 @@ async function runStudentUpload({ pageUrl, file, note, fail, resultName }) {
   return { ok: false, error: 'smis_rejected', data };
 }
 
-async function fetchStudentResult(pageUrl, inputs, note, resultName) {
+async function fetchStudentResult(pageUrl, inputs, note, resultName, signal) {
   try {
     const response = await fetchWithDnrRule(
       pageUrl,
@@ -185,7 +193,7 @@ async function fetchStudentResult(pageUrl, inputs, note, resultName) {
         method: 'POST',
         cache: 'no-store',
         body: buildUploadFormData(inputs, buildStudentResultStep(), emptyUploadFile()),
-        signal: AbortSignal.timeout(60000),
+        signal: signalWithTimeout(60000, signal),
       },
       { ...SMIS_BROWSER_HEADERS, Origin: SMIS_BASE_URL, Referer: pageUrl },
     );
@@ -200,18 +208,19 @@ async function fetchStudentResult(pageUrl, inputs, note, resultName) {
       base64: bytesToBase64(bytes),
     };
   } catch (error) {
+    if (signal?.aborted) throw error;
     note(`Không lấy được file kết quả học sinh: ${error instanceof Error ? error.message : 'lỗi'}`);
     return null;
   }
 }
 
-async function fetchResultFile(pageUrl, html, steps, note, resultName = 'KetQuaNhapGiaoVien.xls') {
+async function fetchResultFile(pageUrl, html, steps, note, resultName = 'KetQuaNhapGiaoVien.xls', signal) {
   if (!html.includes('btChiTiet')) {
     note('Trang không có nút file kết quả.');
     return null;
   }
   try {
-    const response = await postAspNetForm(pageUrl, html, steps.result, emptyUploadFile(), STAFF_UPLOAD_TIMEOUT_MS);
+    const response = await postAspNetForm(pageUrl, html, steps.result, emptyUploadFile(), STAFF_UPLOAD_TIMEOUT_MS, signal);
     const mime = response.headers.get('content-type') ?? '';
     note(`POST file kết quả -> ${response.status} ${mime || '(không có content-type)'}`);
     if (isLoginRedirect(response) || isServerErrorPage(response) || !response.ok) return null;
@@ -226,6 +235,7 @@ async function fetchResultFile(pageUrl, html, steps, note, resultName = 'KetQuaN
       base64: bytesToBase64(bytes),
     };
   } catch (error) {
+    if (signal?.aborted) throw error;
     note(`Không lấy được file kết quả: ${error instanceof Error ? error.message : 'lỗi'}`);
     console.warn('[csdl] không lấy được file kết quả nhân sự', error);
     return null;

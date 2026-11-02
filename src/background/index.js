@@ -1,7 +1,8 @@
 import { browserApi } from './core/runtime.js';
 import { watchLoginPopup } from './features/login-window.js';
-import { dispatchAction } from './router.js';
-import { MESSAGE_TYPE } from '../shared/messages.js';
+import { uploadStaffFile } from './features/staff-sync.js';
+import { dispatchAction, isAllowedSender } from './router.js';
+import { MESSAGE_TYPE, STAFF_UPLOAD_PORT } from '../shared/messages.js';
 import { isInsideCsdl } from '../shared/page.js';
 
 function refreshToolbar() {
@@ -44,4 +45,28 @@ browserApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type !== MESSAGE_TYPE || message.action === 'toggle-panel') return undefined;
   dispatchAction(message, sender).then(sendResponse);
   return true;
+});
+
+browserApi.runtime.onConnect.addListener((port) => {
+  if (port.name !== STAFF_UPLOAD_PORT) return;
+  if (!isAllowedSender(port.sender)) {
+    port.disconnect();
+    return;
+  }
+  const controller = new AbortController();
+  let finished = false;
+  port.onDisconnect.addListener(() => {
+    if (!finished) controller.abort();
+  });
+  port.onMessage.addListener((message) => {
+    if (message?.type !== MESSAGE_TYPE) return;
+    uploadStaffFile(message.payload, controller.signal).then((result) => {
+      finished = true;
+      try {
+        port.postMessage(result);
+      } catch {
+        /* Trang đã tải lại, cổng không còn. */
+      }
+    });
+  });
 });

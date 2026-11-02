@@ -19,7 +19,7 @@ export const App = defineComponent({
 
     function closePanel() {
       ui.close();
-      nav.reset();
+      if (!staffPick.sendActive && !staffPick.sendFailure) nav.reset();
     }
 
     function togglePanel() {
@@ -27,6 +27,8 @@ export const App = defineComponent({
         closePanel();
         return;
       }
+      const pendingKey = staffPick.sendActive ? staffPick.sendKey : staffPick.sendFailure?.key;
+      if (pendingKey) nav.show(pendingKey);
       ui.openPanel();
       session.refresh();
     }

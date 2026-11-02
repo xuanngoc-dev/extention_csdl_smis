@@ -18,7 +18,15 @@ export const ACTION_HANDLERS = {
   'prepare-sync': () => refuseUnsurveyedSync(),
   'download-staff-file': (payload) => downloadStaffImport(payload),
   'upload-staff-file': (payload) => uploadStaffFile(payload),
+  'open-smis-tab': (payload) => openSmisTab(payload?.url),
 };
+
+export async function openSmisTab(url) {
+  const target = String(url ?? '');
+  if (!target.startsWith('https://smis.moet.edu.vn/')) return { ok: false, error: 'origin_not_allowed' };
+  const tab = await browserApi.tabs.create({ url: target, active: true });
+  return { ok: true, data: { tabId: tab?.id ?? null } };
+}
 
 export function isAllowedSender(sender) {
   return isCsdlHost(sender?.origin || '') || isCsdlHost(sender?.url || '');

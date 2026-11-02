@@ -1,4 +1,8 @@
-:host { all: initial; }
+:host {
+  all: initial;
+  --el-font-family: "Roboto", "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  font-family: "Roboto", "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+}
 
 .csdl-root,
 .csdl-root *,
@@ -9,7 +13,7 @@
   all: initial;
   display: block;
   color: #1c2b4a;
-  font-family: "Segoe UI", Roboto, Arial, sans-serif;
+  font-family: "Roboto", "Noto Sans", "Helvetica Neue", Arial, sans-serif !important;
   font-size: 14px;
   line-height: 1.5;
   text-align: left;
@@ -76,7 +80,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .fab::before,
-  .fab::after { animation: none; }
+  .fab::after,
+  .spinner { animation: none; }
 }
 
 .fab-dot {
@@ -237,16 +242,33 @@
   position: absolute;
   inset: 0;
   z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: rgba(255, 255, 255, 0.82);
   color: #1c2b4a;
   font-weight: 700;
 }
 
-.screen-loading span {
-  position: sticky;
-  top: 40%;
-  display: block;
+.screen-loading-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
   text-align: center;
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #d3e2f7;
+  border-top-color: #1f4fb8;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .screen .toast {
@@ -380,8 +402,12 @@
 .csdl-root .el-select__wrapper,
 .csdl-root .el-select__placeholder,
 .csdl-root .el-select__selected-item,
+.csdl-root .el-select__input,
 .select-popper-host,
-.select-popper-host .el-select-dropdown__item {
+.select-popper-host .el-select-dropdown__item,
+.select-popper-host .el-select-dropdown__empty,
+.select-popper-host .el-select-dropdown__loading {
+  font-family: "Roboto", "Noto Sans", "Helvetica Neue", Arial, sans-serif;
   font-size: 14px;
 }
 
@@ -562,19 +588,34 @@
 }
 
 .confirm-backdrop {
-  margin: 0 0 12px;
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 35, 70, 0.45);
+  pointer-events: auto;
+  color: #1c2b4a;
+  font-family: "Roboto", "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .confirm-dialog {
-  padding: 14px;
+  width: min(380px, 100%);
+  padding: 16px;
   border: 1px solid #d3e2f7;
   border-radius: 12px;
   background: #fff;
-  box-shadow: 0 8px 24px rgba(15, 35, 70, 0.12);
+  box-shadow: 0 16px 40px rgba(15, 35, 70, 0.28);
+  outline: none;
 }
 
-.confirm-dialog h3 { margin: 0 0 8px; }
-.confirm-dialog p { margin: 0 0 8px; }
+.confirm-dialog h3 { margin: 0 0 8px; font-size: 16px; }
+.confirm-dialog p { margin: 0; }
+.confirm-dialog .row-actions { justify-content: flex-end; margin-top: 16px; }
 
 .banner {
   padding: 10px 12px;
