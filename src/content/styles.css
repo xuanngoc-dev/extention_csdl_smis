@@ -104,19 +104,43 @@
   border-radius: 12px;
   background: #fff;
   box-shadow: 0 12px 40px rgba(15, 35, 90, 0.35);
+  transition:
+    width 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    height 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    max-width 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    max-height 0.34s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .panel.is-max {
   width: calc(100vw - 40px);
   height: calc(100vh - 110px);
-  max-width: none;
-  max-height: none;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 110px);
 }
 
-.panel.is-min { height: auto; }
+.panel.is-min {
+  height: 62px;
+  max-height: 62px;
+}
+
+.sub-header,
+.panel-body {
+  opacity: 1;
+  transition: opacity 0.22s ease 0.08s;
+}
 
 .panel.is-min .sub-header,
-.panel.is-min .panel-body { display: none; }
+.panel.is-min .panel-body {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel,
+  .sub-header,
+  .panel-body { transition: none; }
+}
 
 .panel:focus { outline: none; }
 
