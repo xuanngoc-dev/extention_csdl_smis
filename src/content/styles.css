@@ -10,7 +10,7 @@
   display: block;
   color: #1c2b4a;
   font-family: "Segoe UI", Roboto, Arial, sans-serif;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.5;
   text-align: left;
 }
@@ -177,7 +177,7 @@
 }
 
 .titles { flex: 1; min-width: 0; line-height: 1.25; }
-.titles strong { display: block; font-size: 12px; }
+.titles strong { display: block; font-size: 14px; }
 
 .status {
   display: flex;
@@ -350,7 +350,30 @@
   margin-bottom: 8px;
 }
 
-.filter-grid .field { min-width: 0; margin-bottom: 0; }
+.filter-grid .field,
+.filter-form .el-form-item { min-width: 0; margin-bottom: 0; }
+
+.filter-form .el-form-item__label {
+  display: inline-flex;
+  align-items: center;
+  height: auto;
+  margin-bottom: 4px;
+  padding: 0;
+  color: #5b6b88;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.filter-form .el-form-item__content { line-height: 1.4; }
+
+.filter-form .el-form-item__error {
+  position: static;
+  padding-top: 4px;
+  font-size: 14px;
+}
+
+.field-index.is-required { color: #b91c1c; }
 
 .filter-grid .el-select { width: 100%; }
 
@@ -359,10 +382,15 @@
 .csdl-root .el-select__selected-item,
 .select-popper-host,
 .select-popper-host .el-select-dropdown__item {
-  font-size: 12px;
+  font-size: 14px;
 }
 
-.csdl-root .el-select__wrapper { min-height: 30px; }
+.csdl-root .el-select__wrapper { min-height: 34px; }
+
+.field-action {
+  display: flex;
+  align-items: flex-end;
+}
 
 .field-action .ghost-button { width: 100%; }
 

@@ -8,13 +8,16 @@ export const BaseIcon = defineComponent({
     size: { type: Number, default: 24 },
   },
   setup(props) {
-    return () =>
-      h('svg', {
+    return () => {
+      const icon = ICON_PATHS[props.name];
+      const spec = icon && typeof icon === 'object' ? icon : { paths: [icon || ''] };
+      return h('svg', {
         class: 'icon',
-        viewBox: '0 0 24 24',
+        viewBox: spec.viewBox || '0 0 24 24',
         width: props.size,
         height: props.size,
         'aria-hidden': 'true',
-      }, [h('path', { d: ICON_PATHS[props.name] ?? '' })]);
+      }, (spec.paths || []).map((d) => h('path', { d })));
+    };
   },
 });

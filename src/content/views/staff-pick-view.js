@@ -1,4 +1,5 @@
 import { defineComponent, h, nextTick, onUnmounted, ref, watch } from 'vue';
+import { ElForm, ElFormItem } from 'element-plus/es/components/form/index.mjs';
 import { FilterSelect } from '../components/filter-select.js';
 import { translateError } from '../lib/errors.js';
 import { sendBackgroundMessage } from '../lib/message-bridge.js';
@@ -17,6 +18,7 @@ export const StaffPickView = defineComponent({
     const confirmOpen = ref(false);
     const dialogRef = ref(null);
     const fileInput = ref(null);
+    const formRef = ref(null);
     const chosenFile = ref(null);
     const notice = ref('');
     const noticeError = ref(false);
@@ -48,7 +50,8 @@ export const StaffPickView = defineComponent({
     );
 
     async function downloadImport() {
-      if (!canExport(picked) || busy.value) return;
+      if (busy.value) return;
+      if (!(await validateFields(formRef.value, ['namHoc', 'capHoc', 'maTruongHoc']))) return;
       const filter = exportFilter(picked);
       busy.value = 'download';
       notice.value = '';
@@ -81,7 +84,14 @@ export const StaffPickView = defineComponent({
     }
 
     async function askSend() {
-      if (!canSend(picked, chosenFile.value) || busy.value) return;
+      if (busy.value) return;
+      const fieldsOk = await validateFields(formRef.value, ['namHoc', 'capHoc', 'maTruongHoc']);
+      if (!chosenFile.value) {
+        noticeError.value = true;
+        notice.value = 'Chọn file import trước khi gửi sang SMIS.';
+      }
+      if (!fieldsOk || !chosenFile.value) return;
+      notice.value = '';
       confirmOpen.value = true;
       await nextTick();
       dialogRef.value?.scrollIntoView({ block: 'center' });
@@ -123,8 +133,7 @@ export const StaffPickView = defineComponent({
     return () =>
       h('div', { class: 'screen' }, [
         h('p', props.feature.desc),
-        filterFields(picked, { busy: busy.value, onDownload: downloadImport }),
-        capWarning(picked),
+        filterFields(picked, formRef, { busy: busy.value, onDownload: downloadImport }),
         props.feature.key === 'staff' && picked.rows.length ? staffTable(picked) : null,
         fileSlot(chosenFile.value, fileInput, busy.value, onPickFile),
         h('div', { class: 'row-actions staff-actions' }, [
@@ -133,7 +142,7 @@ export const StaffPickView = defineComponent({
             {
               type: 'button',
               class: 'primary-button',
-              disabled: Boolean(busy.value) || !canSend(picked, chosenFile.value),
+              disabled: Boolean(busy.value),
               'aria-busy': String(busy.value === 'send'),
               onClick: askSend,
             },
@@ -149,10 +158,6 @@ export const StaffPickView = defineComponent({
   },
 });
 
-function canExport(picked) {
-  return Boolean(picked.maTruongHoc && picked.namHoc && ['1', '2', '3'].includes(String(picked.capHoc)));
-}
-
 function canSend(picked, file) {
   return Boolean(file && ['1', '2', '3'].includes(String(picked.capHoc)));
 }
@@ -166,11 +171,6 @@ function exportFilter(picked) {
     tenLopHoc: String(picked.tenLopHoc || '').trim(),
     maPhanHieu: String(picked.maPhanHieu || '').trim(),
   };
-}
-
-function capWarning(picked) {
-  if (!picked.capHoc || ['1', '2', '3'].includes(String(picked.capHoc))) return null;
-  return h('p', { class: 'error' }, 'SMIS chỉ ghi nhân sự cho cấp Tiểu học, THCS và THPT.');
 }
 
 function refreshWards(picked, readToken, writeToken) {
@@ -230,61 +230,107 @@ function refreshSchools(picked, readToken, writeToken) {
     });
 }
 
-function filterFields(picked, download) {
-  const schoolPlaceholder = picked.capHoc ? 'Chọn trường' : 'Chọn cấp học trước';
-  return h('div', { class: 'filter-grid' }, [
-    choiceField('Năm học', h(FilterSelect, {
-      modelValue: picked.namHoc,
-      'onUpdate:modelValue': (value) => picked.setChoice('namHoc', value),
-      placeholder: 'Chọn năm học',
-      options: picked.years.map((year) => ({ value: String(year.id), label: year.name })),
-    })),
-    choiceField('Cấp học', h(FilterSelect, {
-      modelValue: picked.capHoc,
-      'onUpdate:modelValue': (value) => picked.setChoice('capHoc', value),
-      placeholder: picked.caps.length ? 'Chọn cấp học' : 'Chưa có cấp học',
-      options: picked.caps.map((cap) => ({ value: String(cap.id), label: cap.name })),
-    })),
-    choiceField('Phường xã', h(FilterSelect, {
-      modelValue: picked.wardIds,
-      'onUpdate:modelValue': (value) => picked.setChoice('wardIds', Array.isArray(value) ? value : []),
-      multiple: true,
-      loading: picked.wardsLoading,
-      placeholder: picked.namHoc ? 'Chọn phường xã' : 'Chọn năm học trước',
-      options: picked.wards.map((ward) => ({ value: ward.id, label: ward.name })),
-    })),
-    choiceField('Trường học', h(FilterSelect, {
-      modelValue: picked.maTruongHoc,
-      'onUpdate:modelValue': (value) => picked.setChoice('maTruongHoc', value),
-      loading: picked.schoolsLoading,
-      disabled: !picked.capHoc,
-      placeholder: schoolPlaceholder,
-      options: picked.schools.map((school) => ({ value: school.ma, label: school.ten })),
-    })),
-    choiceField('Khối học', textField(picked.khoiHoc, 'Không bắt buộc', (value) => picked.setChoice('khoiHoc', value))),
-    choiceField('Tên lớp học', textField(picked.tenLopHoc, 'Không bắt buộc', (value) => picked.setChoice('tenLopHoc', value))),
-    choiceField('Mã phân hiệu', textField(picked.maPhanHieu, 'Không bắt buộc', (value) => picked.setChoice('maPhanHieu', value))),
-    h('label', { class: 'field field-action' }, [
-      h('span', '\u00a0'),
-      h(
-        'button',
-        {
-          type: 'button',
-          class: 'ghost-button',
-          disabled: Boolean(download.busy) || !canExport(picked),
-          'aria-busy': String(download.busy === 'download'),
-          onClick: download.onDownload,
-        },
-        download.busy === 'download' ? 'Đang tải file import' : 'Tải file import',
-      ),
-    ]),
-    picked.wardError ? h('p', { class: 'error filter-error' }, picked.wardError) : null,
-    picked.schoolError ? h('p', { class: 'error filter-error' }, picked.schoolError) : null,
-  ]);
+const FILTER_RULES = {
+  namHoc: [{ required: true, message: 'Chọn năm học', trigger: 'change' }],
+  capHoc: [{ validator: validateCap, trigger: 'change' }],
+  maTruongHoc: [{ required: true, message: 'Chọn trường học', trigger: 'change' }],
+};
+
+function validateCap(_rule, value, callback) {
+  if (!value) {
+    callback(new Error('Chọn cấp học'));
+    return;
+  }
+  if (!['1', '2', '3'].includes(String(value))) {
+    callback(new Error('Chỉ Tiểu học, THCS hoặc THPT'));
+    return;
+  }
+  callback();
 }
 
-function choiceField(label, control) {
-  return h('label', { class: 'field' }, [h('span', label), control]);
+async function validateFields(form, names) {
+  if (!form?.validateField) return false;
+  try {
+    return await form.validateField(names) === true;
+  } catch {
+    return false;
+  }
+}
+
+function filterFields(picked, formRef, download) {
+  const schoolPlaceholder = picked.capHoc ? 'Chọn trường' : 'Chọn cấp học trước';
+  return h(ElForm, {
+    ref: formRef,
+    class: 'filter-form',
+    model: picked,
+    rules: FILTER_RULES,
+    labelPosition: 'top',
+    hideRequiredAsterisk: true,
+    scrollToError: true,
+  }, {
+    default: () => h('div', { class: 'filter-grid' }, [
+      formField(1, 'Năm học', 'namHoc', true, h(FilterSelect, {
+        modelValue: picked.namHoc,
+        'onUpdate:modelValue': (value) => picked.setChoice('namHoc', value),
+        placeholder: 'Chọn năm học',
+        options: picked.years.map((year) => ({ value: String(year.id), label: year.name })),
+      })),
+      formField(2, 'Cấp học', 'capHoc', true, h(FilterSelect, {
+        modelValue: picked.capHoc,
+        'onUpdate:modelValue': (value) => picked.setChoice('capHoc', value),
+        placeholder: picked.caps.length ? 'Chọn cấp học' : 'Chưa có cấp học',
+        options: picked.caps.map((cap) => ({ value: String(cap.id), label: cap.name })),
+      })),
+      formField(3, 'Phường xã', '', false, h(FilterSelect, {
+        modelValue: picked.wardIds,
+        'onUpdate:modelValue': (value) => picked.setChoice('wardIds', Array.isArray(value) ? value : []),
+        multiple: true,
+        loading: picked.wardsLoading,
+        placeholder: picked.namHoc ? 'Chọn phường xã' : 'Chọn năm học trước',
+        options: picked.wards.map((ward) => ({ value: ward.id, label: ward.name })),
+      })),
+      formField(4, 'Trường học', 'maTruongHoc', true, h(FilterSelect, {
+        modelValue: picked.maTruongHoc,
+        'onUpdate:modelValue': (value) => picked.setChoice('maTruongHoc', value),
+        loading: picked.schoolsLoading,
+        disabled: !picked.capHoc,
+        placeholder: schoolPlaceholder,
+        options: picked.schools.map((school) => ({ value: school.ma, label: school.ten })),
+      })),
+      formField(5, 'Khối học', '', false, textField(picked.khoiHoc, 'Không bắt buộc', (value) => picked.setChoice('khoiHoc', value))),
+      formField(6, 'Tên lớp học', '', false, textField(picked.tenLopHoc, 'Không bắt buộc', (value) => picked.setChoice('tenLopHoc', value))),
+      formField(7, 'Mã phân hiệu', '', false, textField(picked.maPhanHieu, 'Không bắt buộc', (value) => picked.setChoice('maPhanHieu', value))),
+      h('div', { class: 'field-action' }, [
+        h(
+          'button',
+          {
+            type: 'button',
+            class: 'ghost-button',
+            disabled: Boolean(download.busy),
+            'aria-busy': String(download.busy === 'download'),
+            onClick: download.onDownload,
+          },
+          download.busy === 'download' ? 'Đang tải file import' : 'Tải file import',
+        ),
+      ]),
+      picked.wardError ? h('p', { class: 'error filter-error' }, picked.wardError) : null,
+      picked.schoolError ? h('p', { class: 'error filter-error' }, picked.schoolError) : null,
+    ]),
+  });
+}
+
+function formField(index, text, prop, required, control) {
+  return h(ElFormItem, prop ? { prop } : {}, {
+    label: () => fieldLabel(index, text, required),
+    default: () => control,
+  });
+}
+
+function fieldLabel(index, text, required) {
+  return h('span', { class: 'field-label' }, [
+    h('span', { class: required ? 'field-index is-required' : 'field-index' }, `[${index}]`),
+    ` ${text}`,
+  ]);
 }
 
 function textField(value, placeholder, onInput) {
