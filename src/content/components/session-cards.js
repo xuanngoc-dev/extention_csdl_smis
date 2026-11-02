@@ -6,8 +6,8 @@ export const SessionCards = defineComponent({
   name: 'SessionCards',
   setup() {
     const session = useSessionStore();
-    const csdlOpen = ref(true);
-    const smisOpen = ref(true);
+    const csdlOpen = ref(false);
+    const smisOpen = ref(false);
 
     return () =>
       h('div', { class: 'cards' }, [
