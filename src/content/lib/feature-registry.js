@@ -11,8 +11,8 @@ export const FEATURE_GROUP_LABELS = {
 export const FEATURE_ITEMS = [
   {
     key: 'staff',
-    title: 'Nhân sự',
-    desc: 'Tải file import giáo viên, rồi gửi file đã chọn sang SMIS',
+    title: 'Cán bộ giáo viên',
+    desc: 'Tải file import cán bộ giáo viên, rồi gửi file đã chọn sang SMIS',
     group: 'directory',
     icon: 'personBadge',
     tone: 'violet',

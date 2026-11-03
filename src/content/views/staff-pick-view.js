@@ -1,10 +1,11 @@
-import { Teleport, defineComponent, h, inject, nextTick, ref, watch } from 'vue';
+import { Teleport, defineComponent, h, inject, nextTick, onMounted, ref, watch } from 'vue';
 import { ElForm, ElFormItem } from 'element-plus/es/components/form/index.mjs';
 import { FilterSelect } from '../components/filter-select.js';
 import { base64ToBlob, saveBlob } from '../lib/blob-file.js';
 import { translateError } from '../lib/errors.js';
 import { sendBackgroundMessage } from '../lib/message-bridge.js';
-import { loadSchoolsByFilter, loadWardsByFilter } from '../lib/school-filter.js';
+import { schoolYearStart } from '../lib/staff-catalog.js';
+import { useSessionStore } from '../stores/session.js';
 import { useStaffPickStore } from '../stores/staff-pick.js';
 
 export const StaffPickView = defineComponent({
@@ -14,6 +15,7 @@ export const StaffPickView = defineComponent({
   },
   setup(props) {
     const picked = useStaffPickStore();
+    const session = useSessionStore();
     const popperHost = inject('selectPopper', null);
     const busy = ref('');
     const confirmOpen = ref(false);
@@ -23,25 +25,13 @@ export const StaffPickView = defineComponent({
     const chosenFile = ref(null);
     const notice = ref('');
     const noticeError = ref(false);
-    let schoolLoad = 0;
-    let wardLoad = 0;
 
+    onMounted(() => picked.loadCapLevels());
     watch(
-      () => picked.namHoc,
-      () => {
-        refreshWards(picked, () => wardLoad, (value) => {
-          wardLoad = value;
-        });
-      },
-      { immediate: true },
-    );
-
-    watch(
-      () => [picked.namHoc, picked.capHoc, picked.wardIds.join(',')],
-      () => {
-        refreshSchools(picked, () => schoolLoad, (value) => {
-          schoolLoad = value;
-        });
+      () => [session.schoolCode, session.year],
+      ([code, year]) => {
+        picked.maTruongHoc = String(code || '').trim();
+        picked.namHoc = schoolYearStart(year);
       },
       { immediate: true },
     );
@@ -113,7 +103,7 @@ export const StaffPickView = defineComponent({
       const failure = !sending && picked.sendFailure?.key === props.feature.key ? picked.sendFailure : null;
       return h('div', { class: 'screen' }, [
         h('p', props.feature.desc),
-        filterFields(picked, formRef, { busy: busy.value, onDownload: downloadImport }),
+        filterFields(picked, session, formRef, { busy: busy.value, onDownload: downloadImport }),
         props.feature.key === 'staff' && picked.rows.length ? staffTable(picked) : null,
         fileSlot(chosenFile.value, fileInput, busy.value, onPickFile),
         h('div', { class: 'row-actions staff-actions' }, [
@@ -131,7 +121,7 @@ export const StaffPickView = defineComponent({
         ]),
         busy.value === 'download' ? h('p', { class: 'muted', role: 'status' }, 'Đang tải file import…') : null,
         notice.value ? h('p', { class: noticeError.value ? 'error' : 'ok', role: 'status' }, notice.value) : null,
-        confirmOpen.value ? confirmDialog(smisTarget(props.feature, picked.capHoc), chosenFile.value?.name || '', confirmOpen, dialogRef, popperHost, sendToSmis) : null,
+        confirmOpen.value ? confirmDialog(chosenFile.value?.name || '', confirmOpen, dialogRef, popperHost, sendToSmis) : null,
         failure ? failureDialog(failure, popperHost, () => picked.clearSendFailure(), openFailurePage) : null,
         sending ? h('div', { class: 'screen-loading', role: 'status' }, [
           h('div', { class: 'screen-loading-card' }, [
@@ -160,68 +150,27 @@ function exportFilter(picked) {
   };
 }
 
-function refreshWards(picked, readToken, writeToken) {
-  const namHoc = picked.namHoc;
-  if (!namHoc) {
-    picked.wardsLoading = false;
-    picked.setWards([]);
-    return;
-  }
-  const token = readToken() + 1;
-  writeToken(token);
-  picked.wardsLoading = true;
-  picked.wardError = '';
-  loadWardsByFilter({ namHoc })
-    .then((wards) => {
-      if (token !== readToken()) return;
-      picked.setWards(wards);
-    })
-    .catch((error) => {
-      if (token !== readToken()) return;
-      if (!picked.wards.length) {
-        picked.wardError = error instanceof Error ? error.message : 'Không tải được danh sách phường xã.';
-      }
-    })
-    .finally(() => {
-      if (token === readToken()) picked.wardsLoading = false;
-    });
-}
-
-function refreshSchools(picked, readToken, writeToken) {
-  const namHoc = picked.namHoc;
-  const capHoc = picked.capHoc;
-  const wardIds = picked.wardIds.slice();
-  picked.maTruongHoc = '';
-  picked.schools = [];
-  if (!namHoc || !capHoc) {
-    picked.schoolsLoading = false;
-    picked.schoolError = '';
-    return;
-  }
-  const token = readToken() + 1;
-  writeToken(token);
-  picked.schoolsLoading = true;
-  picked.schoolError = '';
-  loadSchoolsByFilter({ namHoc, capHoc, wardIds })
-    .then((schools) => {
-      if (token !== readToken()) return;
-      picked.setSchools(schools);
-    })
-    .catch((error) => {
-      if (token !== readToken()) return;
-      picked.setSchools([]);
-      picked.schoolError = error instanceof Error ? error.message : 'Không tải được danh sách trường.';
-    })
-    .finally(() => {
-      if (token === readToken()) picked.schoolsLoading = false;
-    });
-}
-
 const FILTER_RULES = {
-  namHoc: [{ required: true, message: 'Chọn năm học', trigger: 'change' }],
+  namHoc: [{ validator: validateYear, trigger: 'change' }],
   capHoc: [{ validator: validateCap, trigger: 'change' }],
-  maTruongHoc: [{ required: true, message: 'Chọn trường học', trigger: 'change' }],
+  maTruongHoc: [{ validator: validateSchool, trigger: 'change' }],
 };
+
+function validateYear(_rule, value, callback) {
+  if (!schoolYearStart(value)) {
+    callback(new Error('Chưa có năm học trên SMIS'));
+    return;
+  }
+  callback();
+}
+
+function validateSchool(_rule, value, callback) {
+  if (!String(value || '').trim()) {
+    callback(new Error('Chưa có mã trường trên SMIS'));
+    return;
+  }
+  callback();
+}
 
 function validateCap(_rule, value, callback) {
   if (!value) {
@@ -244,8 +193,7 @@ async function validateFields(form, names) {
   }
 }
 
-function filterFields(picked, formRef, download) {
-  const schoolPlaceholder = picked.capHoc ? 'Chọn trường' : 'Chọn cấp học trước';
+function filterFields(picked, session, formRef, download) {
   return h(ElForm, {
     ref: formRef,
     class: 'filter-form',
@@ -256,33 +204,15 @@ function filterFields(picked, formRef, download) {
     scrollToError: true,
   }, {
     default: () => h('div', { class: 'filter-grid' }, [
-      formField(1, 'Năm học', 'namHoc', true, h(FilterSelect, {
-        modelValue: picked.namHoc,
-        'onUpdate:modelValue': (value) => picked.setChoice('namHoc', value),
-        placeholder: 'Chọn năm học',
-        options: picked.years.map((year) => ({ value: String(year.id), label: year.name })),
-      })),
-      formField(2, 'Cấp học', 'capHoc', true, h(FilterSelect, {
+      formField(1, 'Tên trường', '', false, lockedField(session.school, 'Chưa có tên trường trên SMIS')),
+      formField(2, 'Mã trường', 'maTruongHoc', true, lockedField(session.schoolCode, 'Chưa có mã trường trên SMIS')),
+      formField(3, 'Năm học', 'namHoc', true, lockedField(session.year, 'Chưa có năm học trên SMIS')),
+      formField(4, 'Cấp học', 'capHoc', true, h(FilterSelect, {
         modelValue: picked.capHoc,
         'onUpdate:modelValue': (value) => picked.setChoice('capHoc', value),
-        placeholder: 'Chọn cấp học',
+        disabled: picked.caps.length === 1,
+        placeholder: picked.caps.length ? 'Chọn cấp học' : 'Chưa có cấp học',
         options: picked.caps.map((cap) => ({ value: String(cap.id), label: cap.name })),
-      })),
-      formField(3, 'Phường xã', '', false, h(FilterSelect, {
-        modelValue: picked.wardIds,
-        'onUpdate:modelValue': (value) => picked.setChoice('wardIds', Array.isArray(value) ? value : []),
-        multiple: true,
-        loading: picked.wardsLoading,
-        placeholder: picked.namHoc ? 'Chọn phường xã' : 'Chọn năm học trước',
-        options: picked.wards.map((ward) => ({ value: ward.id, label: ward.name })),
-      })),
-      formField(4, 'Trường học', 'maTruongHoc', true, h(FilterSelect, {
-        modelValue: picked.maTruongHoc,
-        'onUpdate:modelValue': (value) => picked.setChoice('maTruongHoc', value),
-        loading: picked.schoolsLoading,
-        disabled: !picked.capHoc,
-        placeholder: schoolPlaceholder,
-        options: picked.schools.map((school) => ({ value: school.ma, label: school.ten })),
       })),
       formField(5, 'Khối học', '', false, textField(picked.khoiHoc, 'Không bắt buộc', (value) => picked.setChoice('khoiHoc', value))),
       formField(6, 'Tên lớp học', '', false, textField(picked.tenLopHoc, 'Không bắt buộc', (value) => picked.setChoice('tenLopHoc', value))),
@@ -300,8 +230,6 @@ function filterFields(picked, formRef, download) {
           download.busy === 'download' ? 'Đang tải file import' : 'Tải file import',
         ),
       ]),
-      picked.wardError ? h('p', { class: 'error filter-error' }, picked.wardError) : null,
-      picked.schoolError ? h('p', { class: 'error filter-error' }, picked.schoolError) : null,
     ]),
   });
 }
@@ -318,6 +246,17 @@ function fieldLabel(index, text, required) {
     h('span', { class: required ? 'field-index is-required' : 'field-index' }, `[${index}]`),
     ` ${text}`,
   ]);
+}
+
+function lockedField(value, placeholder) {
+  return h('input', {
+    class: 'field-input',
+    type: 'text',
+    readonly: true,
+    value: String(value || '').trim(),
+    placeholder,
+    'aria-readonly': 'true',
+  });
 }
 
 function textField(value, placeholder, onInput) {
@@ -379,11 +318,7 @@ function fileSlot(file, input, busy, onPick) {
   ]);
 }
 
-function smisTarget(feature, cap) {
-  return String(feature?.smisPath || '').replace('{cap}', String(cap || ''));
-}
-
-function confirmDialog(target, fileName, open, dialogRef, popperHost, onConfirm) {
+function confirmDialog(fileName, open, dialogRef, popperHost, onConfirm) {
   const dialog = h('div', { class: 'confirm-backdrop', onClick: () => { open.value = false; } }, [
     h(
       'div',
@@ -403,7 +338,7 @@ function confirmDialog(target, fileName, open, dialogRef, popperHost, onConfirm)
       },
       [
         h('h3', { id: 'staff-confirm-title' }, 'Gửi sang SMIS'),
-        h('p', `Gửi file ${fileName} sang ${target}?`),
+        h('p', `Xác nhận gửi dữ liệu từ ${fileName} qua hệ thống SMIS?`),
         h('div', { class: 'row-actions' }, [
           h('button', { type: 'button', class: 'ghost-button', onClick: () => { open.value = false; } }, 'Hủy'),
           h('button', { type: 'button', class: 'primary-button', onClick: onConfirm }, 'Gửi'),

@@ -423,6 +423,12 @@
   background: #fff;
 }
 
+.field-input[readonly] {
+  background: #f4f7fb;
+  color: #1c2b4a;
+  cursor: default;
+}
+
 .filter-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

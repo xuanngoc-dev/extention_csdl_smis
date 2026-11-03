@@ -1,29 +1,27 @@
 import { defineStore } from 'pinia';
 import { bytesToBase64, saveBase64File } from '../lib/blob-file.js';
 import { translateError } from '../lib/errors.js';
-import { SCHOOL_LEVELS, schoolYearOptions } from '../lib/staff-catalog.js';
+import { readCapLevels } from '../lib/staff-catalog.js';
 import { uploadStaffOverPort } from '../lib/staff-upload.js';
 import { isStaffRowReady, mapOfficials } from '../../shared/staff-officials.js';
 
 let sendNoticeTimer = 0;
+
+function capState() {
+  const caps = readCapLevels();
+  return {
+    caps,
+    capHoc: caps.length === 1 ? String(caps[0].id) : '',
+  };
+}
 
 export const useStaffPickStore = defineStore('staff-pick', {
   state: () => ({
     rows: [],
     loaded: 0,
     onLookupPage: false,
-    years: schoolYearOptions(),
-    caps: SCHOOL_LEVELS,
-    provinceCode: '',
-    wards: [],
-    wardsLoading: false,
-    wardError: '',
-    wardIds: [],
-    schools: [],
-    schoolsLoading: false,
-    schoolError: '',
+    ...capState(),
     namHoc: '',
-    capHoc: '',
     maTruongHoc: '',
     khoiHoc: '',
     tenLopHoc: '',
@@ -45,22 +43,18 @@ export const useStaffPickStore = defineStore('staff-pick', {
       this.loaded = Number(payload.loaded) || 0;
       this.rows = mapOfficials(payload.rows);
     },
-    applyFilters(payload) {
-      const pageCap = payload.capIds?.length === 1 ? String(payload.capIds[0]) : '';
-      if (!this.capHoc && SCHOOL_LEVELS.some((cap) => cap.id === pageCap)) this.capHoc = pageCap;
-      if (!this.wardIds.length && payload.wardIds?.length) this.wardIds = payload.wardIds.map(String);
-      if (!this.maTruongHoc && payload.schoolCodes?.length === 1) this.maTruongHoc = String(payload.schoolCodes[0]);
+    applyFilters() {
+      // Năm học, cấp học và mã trường không lấy từ bộ lọc của trang tra cứu.
     },
-    setWards(wards) {
-      this.wards = wards;
-      this.wardError = '';
-      const ids = new Set(wards.map((ward) => ward.id));
-      this.wardIds = this.wardIds.filter((id) => ids.has(id));
-    },
-    setSchools(schools) {
-      this.schools = schools;
-      this.schoolError = '';
-      if (this.maTruongHoc && !schools.some((school) => school.ma === this.maTruongHoc)) this.maTruongHoc = '';
+    loadCapLevels() {
+      const caps = readCapLevels();
+      const previous = String(this.capHoc || '');
+      this.caps = caps;
+      if (caps.length === 1) {
+        this.capHoc = String(caps[0].id);
+        return;
+      }
+      this.capHoc = caps.some((cap) => cap.id === previous) ? previous : '';
     },
     setChoice(name, value) {
       this[name] = value;

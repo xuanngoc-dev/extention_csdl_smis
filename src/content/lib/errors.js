@@ -12,7 +12,7 @@ export const ERROR_MESSAGES = {
   empty_response: 'Không nhận được phản hồi từ extension.',
   no_tab: 'Không xác định được tab hiện tại.',
   staff_list_empty: 'Không có cán bộ đủ mã định danh và họ tên để ghi.',
-  staff_filter_missing: 'Chọn trường học, năm học và cấp học trước khi xuất.',
+  staff_filter_missing: 'Cần mã trường, năm học trên SMIS và cấp học trước khi xuất.',
   staff_cap_unsupported: 'SMIS chỉ ghi nhân sự cho cấp 1, 2 hoặc 3.',
   staff_export_failed: 'CSDL ngành không trả file import.',
   staff_file_missing: 'Chọn file import trước khi gửi sang SMIS.',
