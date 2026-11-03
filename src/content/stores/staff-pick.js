@@ -63,7 +63,19 @@ export const useStaffPickStore = defineStore('staff-pick', {
       this.sendFailure = null;
     },
     async uploadToSmis({ key, cap, file }) {
-      if (this.sendActive || !file) return;
+      if (this.sendActive) return;
+      const name = String(file?.name || '').trim();
+      const bytes = file ? new Uint8Array(await file.arrayBuffer()) : new Uint8Array();
+      if (!name || bytes.byteLength === 0) {
+        this.sendKey = key;
+        this.sendNotice = '';
+        this.sendFailure = {
+          key,
+          detail: 'File import không có dữ liệu.',
+          pageUrl: '',
+        };
+        return;
+      }
       this.sendKey = key;
       this.sendActive = true;
       this.sendNotice = '';
@@ -71,7 +83,6 @@ export const useStaffPickStore = defineStore('staff-pick', {
       this.sendFailure = null;
       window.clearTimeout(sendNoticeTimer);
       try {
-        const bytes = new Uint8Array(await file.arrayBuffer());
         const result = await uploadStaffOverPort({
           kind: key,
           cap,

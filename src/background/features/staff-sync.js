@@ -1,6 +1,6 @@
 /**
- * Nhân sự sang SMIS gồm hai bước tách riêng:
- * tải file import từ CSDL ngành, rồi gửi một file đã chọn sang /C{cap}/GiaoVienImportExcel.aspx.
+ * Nhân sự sang SMIS: tải file import từ CSDL ngành vào bộ nhớ,
+ * rồi gửi đúng file đó sang /C{cap}/GiaoVienImportExcel.aspx.
  */
 import { SMIS_BASE_URL, SMIS_BROWSER_HEADERS, STAFF_UPLOAD_TIMEOUT_MS } from '../core/constants.js';
 import { toSyncErrorCode } from '../core/errors.js';
@@ -41,6 +41,9 @@ export async function downloadStaffImport(payload) {
     const kind = importKind(payload?.kind);
     const file = await exportTeacherFile(filter, kind.exportPath);
     const bytes = new Uint8Array(await file.blob.arrayBuffer());
+    if (!String(file.name || '').trim() || bytes.byteLength === 0) {
+      return { ok: false, error: 'staff_export_failed' };
+    }
     console.log('[csdl][sync-staff]', `Tải file import ${file.name}, ${bytes.byteLength} byte`);
     return {
       ok: true,

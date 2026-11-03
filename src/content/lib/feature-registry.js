@@ -12,7 +12,7 @@ export const FEATURE_ITEMS = [
   {
     key: 'staff',
     title: 'Cán bộ giáo viên',
-    desc: 'Tải file import cán bộ giáo viên, rồi gửi file đã chọn sang SMIS',
+    desc: 'Gửi file import cán bộ giáo viên sang SMIS',
     group: 'directory',
     icon: 'personBadge',
     tone: 'violet',
@@ -21,7 +21,7 @@ export const FEATURE_ITEMS = [
   {
     key: 'class',
     title: 'Lớp học',
-    desc: 'Tải file import lớp học, rồi gửi file đã chọn sang SMIS',
+    desc: 'Gửi file import lớp học sang SMIS',
     group: 'directory',
     icon: 'easel',
     tone: 'violet',
@@ -30,7 +30,7 @@ export const FEATURE_ITEMS = [
   {
     key: 'student',
     title: 'Học sinh',
-    desc: 'Tải file import học sinh, rồi gửi file đã chọn sang SMIS',
+    desc: 'Gửi file import học sinh sang SMIS',
     group: 'directory',
     icon: 'person',
     tone: 'teal',

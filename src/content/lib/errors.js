@@ -15,7 +15,7 @@ export const ERROR_MESSAGES = {
   staff_filter_missing: 'Cần mã trường, năm học trên SMIS và cấp học trước khi xuất.',
   staff_cap_unsupported: 'SMIS chỉ ghi nhân sự cho cấp 1, 2 hoặc 3.',
   staff_export_failed: 'CSDL ngành không trả file import.',
-  staff_file_missing: 'Chọn file import trước khi gửi sang SMIS.',
+  staff_file_missing: 'Chưa có file import để gửi sang SMIS.',
   smis_cap_missing: 'Chưa chọn cấp học trên SMIS. Hãy chọn năm học trước khi ghi.',
   step1_server_error: 'SMIS báo lỗi máy chủ ở bước Tải lên.',
   step1_no_write_button: 'SMIS không hiện nút Ghi sau khi tải file.',

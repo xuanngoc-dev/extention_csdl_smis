@@ -19,10 +19,10 @@ export async function exportTeacherFile(filter, path = 'giao-vien') {
     signal: AbortSignal.timeout(EXPORT_TIMEOUT_MS),
   });
   const bytes = new Uint8Array(await response.arrayBuffer());
-  if (!response.ok || looksLikeText(bytes)) {
-    const detail = decodeText(bytes).slice(0, 300);
+  if (!response.ok || !isSpreadsheet(bytes)) {
+    const detail = decodeText(bytes).replace(/\s+/g, ' ').trim().slice(0, 300);
     const error = new Error('staff_export_failed');
-    error.detail = `HTTP ${response.status}${detail ? `: ${detail}` : ''}`;
+    error.detail = detail || `HTTP ${response.status}`;
     throw error;
   }
   const name = fileNameFromDisposition(response.headers.get('Content-Disposition')) || defaultFileName(path, request);
@@ -64,9 +64,11 @@ function fileNameFromDisposition(header) {
   return plain?.[1] || '';
 }
 
-function looksLikeText(bytes) {
-  const first = bytes[0];
-  return first === 0x7b || first === 0x5b || first === 0x3c;
+function isSpreadsheet(bytes) {
+  if (bytes.byteLength < 8) return false;
+  const excel = bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0;
+  const zip = bytes[0] === 0x50 && bytes[1] === 0x4b;
+  return excel || zip;
 }
 
 function decodeText(bytes) {
