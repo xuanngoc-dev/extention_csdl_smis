@@ -1,10 +1,15 @@
 import { defineStore } from 'pinia';
-import { readCsdlRole } from '../lib/csdl-user.js';
+import { readCsdlAccount } from '../lib/csdl-user.js';
 import { translateError } from '../lib/errors.js';
 import { sendBackgroundMessage } from '../lib/message-bridge.js';
 
 function readCsdlUserLabel() {
   return document.querySelector('.user-name')?.textContent?.replace(/\s+/g, ' ').trim() || '';
+}
+
+function readStoredCsdlAccount() {
+  const account = readCsdlAccount();
+  return { csdlRole: account.role, csdlSchoolCode: account.schoolCode };
 }
 
 const EMPTY_CONFIG = {
@@ -28,7 +33,7 @@ export const useSessionStore = defineStore('session', {
     error: '',
     csdlLoggedIn: false,
     csdlUser: '',
-    csdlRole: readCsdlRole(),
+    ...readStoredCsdlAccount(),
   }),
   actions: {
     async refresh() {
@@ -45,7 +50,7 @@ export const useSessionStore = defineStore('session', {
       this.checking = false;
       this.csdlLoggedIn = Boolean(csdl.ok && csdl.data?.loggedIn);
       this.csdlUser = readCsdlUserLabel();
-      this.csdlRole = readCsdlRole();
+      Object.assign(this, readStoredCsdlAccount());
 
       if (!session.ok) {
         this.loggedIn = false;

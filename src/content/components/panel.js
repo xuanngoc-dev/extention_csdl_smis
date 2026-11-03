@@ -4,7 +4,7 @@ import { FeatureHoldView } from '../views/feature-hold-view.js';
 import { HomeView } from '../views/home-view.js';
 import { SettingsView } from '../views/settings-view.js';
 import { StaffPickView } from '../views/staff-pick-view.js';
-import { FEATURE_ROLE } from '../lib/csdl-user.js';
+import { FEATURE_ROLE, sameSchoolCode } from '../lib/csdl-user.js';
 import { findFeature } from '../lib/feature-registry.js';
 import { useNavStore } from '../stores/nav.js';
 import { useSessionStore } from '../stores/session.js';
@@ -363,7 +363,8 @@ export const Panel = defineComponent({
 
     return () => {
       const settings = ui.settings;
-      const feature = !settings && session.csdlRole === FEATURE_ROLE && nav.activeKey ? findFeature(nav.activeKey) : null;
+      const schoolReady = session.loggedIn && sameSchoolCode(session.csdlSchoolCode, session.schoolCode);
+      const feature = !settings && session.csdlRole === FEATURE_ROLE && schoolReady && nav.activeKey ? findFeature(nav.activeKey) : null;
       const placed = ui.frame !== 'max';
       const style = placed ? { transform: `translate3d(${offset.value.x}px, ${offset.value.y}px, 0)` } : undefined;
       if (style && size.value.width) {

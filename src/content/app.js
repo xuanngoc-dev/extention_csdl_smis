@@ -4,6 +4,7 @@ import { Panel } from './components/panel.js';
 import { LOGIN_WINDOW_MESSAGE_TYPE, MESSAGE_TYPE } from '../shared/messages.js';
 import { browserApi } from './runtime/browser-api.js';
 import { startStaffWatch } from './lib/staff-watch.js';
+import { FEATURE_ROLE, sameSchoolCode } from './lib/csdl-user.js';
 import { useNavStore } from './stores/nav.js';
 import { useSessionStore } from './stores/session.js';
 import { useStaffPickStore } from './stores/staff-pick.js';
@@ -80,9 +81,10 @@ export const App = defineComponent({
     }
 
     watch(
-      () => [session.loggedIn, session.checking],
-      ([loggedIn, checking]) => {
-        if (!checking && !loggedIn) nav.reset();
+      () => [session.loggedIn, session.checking, session.csdlRole, session.csdlSchoolCode, session.schoolCode],
+      ([loggedIn, checking, role, csdlSchoolCode, schoolCode]) => {
+        const schoolReady = role !== FEATURE_ROLE || sameSchoolCode(csdlSchoolCode, schoolCode);
+        if (!checking && (!loggedIn || !schoolReady) && !staffPick.sendActive && !staffPick.sendFailure) nav.reset();
       },
     );
 

@@ -33,12 +33,29 @@ export function roleOf(info) {
   return Number.isInteger(role) ? role : null;
 }
 
-export function readCsdlRole() {
-  if (typeof document === 'undefined') return null;
+export function schoolCodeOf(info) {
+  const code = info?.ma_truong_hoc;
+  if (code == null) return '';
+  return String(code).trim();
+}
+
+export function sameSchoolCode(left, right) {
+  const csdlCode = String(left || '').trim().toUpperCase();
+  const smisCode = String(right || '').trim().toUpperCase();
+  return csdlCode !== '' && csdlCode === smisCode;
+}
+
+export function readCsdlAccount() {
+  const empty = { role: null, schoolCode: '' };
+  if (typeof document === 'undefined') return empty;
   for (const script of document.scripts) {
     const info = userInfoFromSource(script.textContent || '');
     if (info === undefined) continue;
-    return roleOf(info);
+    return { role: roleOf(info), schoolCode: schoolCodeOf(info) };
   }
-  return null;
+  return empty;
+}
+
+export function readCsdlRole() {
+  return readCsdlAccount().role;
 }

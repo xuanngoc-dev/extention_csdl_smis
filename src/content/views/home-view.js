@@ -1,7 +1,7 @@
 import { defineComponent, h } from 'vue';
 import { BaseIcon } from '../components/base-icon.js';
 import { SessionCards } from '../components/session-cards.js';
-import { FEATURE_ROLE } from '../lib/csdl-user.js';
+import { FEATURE_ROLE, sameSchoolCode } from '../lib/csdl-user.js';
 import { featureGroups } from '../lib/feature-registry.js';
 import { useNavStore } from '../stores/nav.js';
 import { useSessionStore } from '../stores/session.js';
@@ -42,10 +42,13 @@ export const HomeView = defineComponent({
     const session = useSessionStore();
     const ui = useUiStore();
     return () => {
-      const locked = !session.loggedIn;
-      const tip = session.checking
+      const schoolMismatch = session.loggedIn && !sameSchoolCode(session.csdlSchoolCode, session.schoolCode);
+      const locked = !session.loggedIn || schoolMismatch;
+      const tip = session.checking && !session.loggedIn
         ? 'Đang kiểm tra phiên SMIS.'
-        : 'Đăng nhập SMIS để sử dụng chức năng này.';
+        : schoolMismatch
+          ? 'Thông tin tài khoản của 2 nền tảng không khớp. Vui lòng kiểm tra lại.'
+          : 'Đăng nhập SMIS để sử dụng chức năng này.';
       const groups = featureGroups();
       const wide = ui.frame === 'max';
       const features = session.csdlRole === FEATURE_ROLE
