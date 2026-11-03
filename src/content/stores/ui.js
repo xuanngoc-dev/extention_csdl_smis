@@ -38,14 +38,23 @@ function writeLayout(state) {
 }
 
 export const useUiStore = defineStore('ui', {
-  state: () => ({ open: false, frame: 'normal', ...storedLayout() }),
+  state: () => ({ open: false, frame: 'normal', settings: false, ...storedLayout() }),
   actions: {
     openPanel() {
       this.open = true;
     },
     close() {
       this.open = false;
+    },
+    finishClose() {
       this.frame = 'normal';
+      this.settings = false;
+    },
+    toggleSettings() {
+      this.settings = !this.settings;
+    },
+    closeSettings() {
+      this.settings = false;
     },
     setOffset(x, y) {
       if (this.offsetX === x && this.offsetY === y) return;

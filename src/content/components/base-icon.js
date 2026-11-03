@@ -17,7 +17,10 @@ export const BaseIcon = defineComponent({
         width: props.size,
         height: props.size,
         'aria-hidden': 'true',
-      }, (spec.paths || []).map((d) => h('path', { d })));
+      }, (spec.paths || []).map((d) => h('path', {
+        d,
+        ...(spec.fillRule ? { 'fill-rule': spec.fillRule } : {}),
+      })));
     };
   },
 });

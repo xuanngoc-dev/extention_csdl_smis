@@ -2,16 +2,25 @@ import { defineComponent, h, onMounted, onUnmounted, ref, watch } from 'vue';
 import { BaseIcon } from './base-icon.js';
 import { FeatureHoldView } from '../views/feature-hold-view.js';
 import { HomeView } from '../views/home-view.js';
+import { SettingsView } from '../views/settings-view.js';
 import { StaffPickView } from '../views/staff-pick-view.js';
+import { FEATURE_ROLE } from '../lib/csdl-user.js';
 import { findFeature } from '../lib/feature-registry.js';
 import { useNavStore } from '../stores/nav.js';
 import { useSessionStore } from '../stores/session.js';
 import { useUiStore } from '../stores/ui.js';
 
-function headerAction(icon, label, onClick) {
+function headerAction(icon, label, onClick, active = false) {
   return h(
     'button',
-    { type: 'button', class: 'icon-button', title: label, 'aria-label': label, onClick },
+    {
+      type: 'button',
+      class: active ? 'icon-button is-active' : 'icon-button',
+      title: label,
+      'aria-label': label,
+      'aria-pressed': active ? 'true' : undefined,
+      onClick,
+    },
     [h(BaseIcon, { name: icon, size: 18 })],
   );
 }
@@ -353,7 +362,8 @@ export const Panel = defineComponent({
     });
 
     return () => {
-      const feature = nav.activeKey ? findFeature(nav.activeKey) : null;
+      const settings = ui.settings;
+      const feature = !settings && session.csdlRole === FEATURE_ROLE && nav.activeKey ? findFeature(nav.activeKey) : null;
       const placed = ui.frame !== 'max';
       const style = placed ? { transform: `translate3d(${offset.value.x}px, ${offset.value.y}px, 0)` } : undefined;
       if (style && size.value.width) {
@@ -399,6 +409,7 @@ export const Panel = defineComponent({
               ]),
             ]),
             h('div', { class: 'panel-actions' }, [
+              headerAction('gear', settings ? 'Đóng cài đặt' : 'Cài đặt', () => ui.toggleSettings(), settings),
               headerAction(
                 ui.frame === 'min' ? 'restore' : 'minimize',
                 ui.frame === 'min' ? 'Khôi phục' : 'Thu nhỏ',
@@ -412,18 +423,27 @@ export const Panel = defineComponent({
               headerAction('close', 'Đóng', () => emit('close')),
             ]),
           ]),
-          feature
+          settings || feature
             ? h('div', { class: 'sub-header' }, [
                 h(
                   'button',
-                  { type: 'button', class: 'icon-button', 'aria-label': 'Quay lại', onClick: () => nav.back() },
+                  {
+                    type: 'button',
+                    class: 'icon-button',
+                    'aria-label': 'Quay lại',
+                    onClick: () => (settings ? ui.closeSettings() : nav.back()),
+                  },
                   [h(BaseIcon, { name: 'arrowLeft', size: 18 })],
                 ),
-                h('span', feature.title),
+                h('span', settings ? 'Cài đặt' : feature.title),
               ])
             : null,
           h('div', { class: 'panel-body' }, [
-            feature ? h(['staff', 'class', 'student'].includes(feature.key) ? StaffPickView : FeatureHoldView, { key: feature.key, feature }) : h(HomeView),
+            settings
+              ? h(SettingsView)
+              : feature
+                ? h(['staff', 'class', 'student'].includes(feature.key) ? StaffPickView : FeatureHoldView, { key: feature.key, feature })
+                : h(HomeView),
           ]),
           ui.frame === 'normal'
             ? RESIZE_EDGES.map((edge) => h('div', {

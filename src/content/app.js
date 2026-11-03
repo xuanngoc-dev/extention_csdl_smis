@@ -1,4 +1,4 @@
-import { defineComponent, h, onMounted, onUnmounted, watch } from 'vue';
+import { defineComponent, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { BaseIcon } from './components/base-icon.js';
 import { Panel } from './components/panel.js';
 import { LOGIN_WINDOW_MESSAGE_TYPE, MESSAGE_TYPE } from '../shared/messages.js';
@@ -16,10 +16,55 @@ export const App = defineComponent({
     const nav = useNavStore();
     const session = useSessionStore();
     const staffPick = useStaffPickStore();
+    const present = ref(false);
+    const visible = ref(false);
+    const popRef = ref(null);
+    let leaveTimer = 0;
+
+    function finishClose() {
+      if (visible.value || !present.value) return;
+      present.value = false;
+      window.clearTimeout(leaveTimer);
+      ui.finishClose();
+      if (!staffPick.sendActive && !staffPick.sendFailure) nav.reset();
+    }
+
+    function reveal() {
+      window.clearTimeout(leaveTimer);
+      const start = () => {
+        const pop = popRef.value;
+        if (!pop) return;
+        void pop.offsetWidth;
+        visible.value = true;
+      };
+      if (!present.value) {
+        present.value = true;
+        nextTick(start);
+        return;
+      }
+      start();
+    }
+
+    function hide() {
+      visible.value = false;
+      window.clearTimeout(leaveTimer);
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        finishClose();
+        return;
+      }
+      leaveTimer = window.setTimeout(finishClose, 400);
+    }
+
+    function onPopTransitionEnd(event) {
+      if (event.target !== popRef.value) return;
+      if (event.propertyName !== 'transform') return;
+      if (!visible.value) finishClose();
+    }
 
     function closePanel() {
+      if (!ui.open) return;
       ui.close();
-      if (!staffPick.sendActive && !staffPick.sendFailure) nav.reset();
+      hide();
     }
 
     function togglePanel() {
@@ -30,6 +75,7 @@ export const App = defineComponent({
       const pendingKey = staffPick.sendActive ? staffPick.sendKey : staffPick.sendFailure?.key;
       if (pendingKey) nav.show(pendingKey);
       ui.openPanel();
+      reveal();
       session.refresh();
     }
 
@@ -47,6 +93,7 @@ export const App = defineComponent({
     const stopStaffWatch = startStaffWatch(staffPick);
     onMounted(() => browserApi.runtime.onMessage.addListener(onMessage));
     onUnmounted(() => {
+      window.clearTimeout(leaveTimer);
       browserApi.runtime.onMessage.removeListener(onMessage);
       stopStaffWatch();
     });
@@ -54,8 +101,16 @@ export const App = defineComponent({
     return () =>
       h('div', { class: 'csdl-root' }, [
         h('div', { class: 'launcher' }, [
-          ui.open && ui.frame !== 'min' ? h('div', { class: 'panel-backdrop', onClick: closePanel }) : null,
-          ui.open ? h(Panel, { onClose: closePanel }) : null,
+          present.value
+            ? h('div', {
+                ref: popRef,
+                class: ['panel-pop', visible.value ? '' : 'is-closed'],
+                onTransitionend: onPopTransitionEnd,
+              }, [
+                ui.frame !== 'min' ? h('div', { class: 'panel-backdrop', onClick: closePanel }) : null,
+                h(Panel, { onClose: closePanel }),
+              ])
+            : null,
           h(
             'button',
             {

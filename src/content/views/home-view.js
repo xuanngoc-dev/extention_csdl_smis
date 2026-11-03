@@ -1,6 +1,7 @@
 import { defineComponent, h } from 'vue';
 import { BaseIcon } from '../components/base-icon.js';
 import { SessionCards } from '../components/session-cards.js';
+import { FEATURE_ROLE } from '../lib/csdl-user.js';
 import { featureGroups } from '../lib/feature-registry.js';
 import { useNavStore } from '../stores/nav.js';
 import { useSessionStore } from '../stores/session.js';
@@ -47,16 +48,19 @@ export const HomeView = defineComponent({
         : 'Đăng nhập SMIS để sử dụng chức năng này.';
       const groups = featureGroups();
       const wide = ui.frame === 'max';
-      return h('div', { class: 'home' }, [
-        h(SessionCards),
-        wide
+      const features = session.csdlRole === FEATURE_ROLE
+        ? wide
           ? h('div', { class: 'feature-grid' }, groups.flatMap((group) => group.items.map((feature) => featureCard(feature, group.title, locked, tip, nav))))
           : groups.map((group) =>
               h('section', { class: 'group', key: group.key }, [
                 h('h2', { class: 'group-title' }, group.title),
                 h('div', { class: 'feature-grid' }, group.items.map((feature) => featureCard(feature, '', locked, tip, nav))),
               ]),
-            ),
+            )
+        : h('p', { class: 'feature-pending' }, 'Các chức năng đang phát triển...');
+      return h('div', { class: 'home' }, [
+        h(SessionCards),
+        features,
       ]);
     };
   },

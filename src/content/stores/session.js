@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import { readCsdlRole } from '../lib/csdl-user.js';
 import { translateError } from '../lib/errors.js';
 import { sendBackgroundMessage } from '../lib/message-bridge.js';
 
@@ -27,6 +28,7 @@ export const useSessionStore = defineStore('session', {
     error: '',
     csdlLoggedIn: false,
     csdlUser: '',
+    csdlRole: readCsdlRole(),
   }),
   actions: {
     async refresh() {
@@ -43,6 +45,7 @@ export const useSessionStore = defineStore('session', {
       this.checking = false;
       this.csdlLoggedIn = Boolean(csdl.ok && csdl.data?.loggedIn);
       this.csdlUser = readCsdlUserLabel();
+      this.csdlRole = readCsdlRole();
 
       if (!session.ok) {
         this.loggedIn = false;
