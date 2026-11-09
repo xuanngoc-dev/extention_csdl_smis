@@ -90,8 +90,7 @@ export const ExportSyncView = defineComponent({
     watch(
       () => session.phanHieuCode,
       (code) => {
-        if (props.feature.key !== 'teaching-assignment' || picked.maPhanHieu || !code) return;
-        picked.setChoice('maPhanHieu', code);
+        picked.setChoice('maPhanHieu', String(code || '').trim());
       },
       { immediate: true },
     );
@@ -335,7 +334,7 @@ function filterForm(key, picked, session, formRef, classState, fieldErrors, choo
   }, {
     default: () => h('div', { class: 'filter-grid' }, [
       ...fields.map((field, index) => formField(index + 1, field, fieldErrors)),
-      key === 'result' ? resultHint(picked) : h('p', { class: 'muted filter-note' }, 'Xuất toàn bộ phân công trong phân hiệu. Mã phân hiệu là bắt buộc.'),
+      key === 'result' ? resultHint(picked) : h('p', { class: 'muted filter-note' }, 'Xuất toàn bộ phân công trong phân hiệu. Mã phân hiệu lấy theo thông tin SMIS.'),
       key === 'result' && classState?.error ? h('p', { class: 'error filter-note' }, classState.error) : null,
       h('div', { class: 'field-action' }, [sendButton]),
     ]),
@@ -404,10 +403,7 @@ function resultFields(picked, session, classState, choose) {
     fields.push(selectField('Thời điểm đánh giá', 'thoiDiem', picked.thoiDiem, PERIODS, (value) => choose('thoiDiem', value), 'Chọn thời điểm đánh giá'));
   }
   if (mode.cap1) {
-    fields.push({
-      label: 'Mã phân hiệu',
-      control: textField(picked.maPhanHieu, 'Không bắt buộc', (value) => choose('maPhanHieu', value)),
-    });
+    fields.push(locked('Mã phân hiệu', session.phanHieuCode, 'Chưa có mã phân hiệu trên SMIS'));
   }
   return fields;
 }
@@ -435,13 +431,13 @@ function assignmentFields(picked, session, choose) {
     homeroom
       ? selectField('Thời điểm chủ nhiệm', 'phanCongThoiDiem', picked.phanCongThoiDiem, MOMENTS, (value) => choose('phanCongThoiDiem', value), 'Chọn thời điểm chủ nhiệm')
       : selectField('Học kỳ chuyên môn', 'hocKy', picked.hocKy, TERMS, (value) => choose('hocKy', value), 'Chọn học kỳ'),
-    {
-      label: 'Mã phân hiệu',
-      prop: 'maPhanHieu',
-      required: true,
-      rules: [rule(requireText('Nhập mã phân hiệu để xuất phân công.'), 'Nhập mã phân hiệu để xuất phân công.')],
-      control: textField(picked.maPhanHieu, 'Bắt buộc', (value) => choose('maPhanHieu', value)),
-    },
+    locked(
+      'Mã phân hiệu',
+      session.phanHieuCode,
+      'Chưa có mã phân hiệu trên SMIS',
+      'maPhanHieu',
+      [rule(requireText('Chưa có mã phân hiệu trên SMIS'), 'Chưa có mã phân hiệu trên SMIS')],
+    ),
   ];
 }
 

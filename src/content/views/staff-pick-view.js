@@ -34,6 +34,13 @@ export const StaffPickView = defineComponent({
       },
       { immediate: true },
     );
+    watch(
+      () => session.phanHieuCode,
+      (code) => {
+        picked.setChoice('maPhanHieu', String(code || '').trim());
+      },
+      { immediate: true },
+    );
 
     async function sendToSmis() {
       if (step.value || picked.sendActive) return;
@@ -229,7 +236,7 @@ function filterFields(picked, session, formRef, sendButton) {
       })),
       formField(5, 'Khối học', '', false, textField(picked.khoiHoc, 'Không bắt buộc', (value) => picked.setChoice('khoiHoc', value))),
       formField(6, 'Tên lớp học', '', false, textField(picked.tenLopHoc, 'Không bắt buộc', (value) => picked.setChoice('tenLopHoc', value))),
-      formField(7, 'Mã phân hiệu', '', false, textField(picked.maPhanHieu, 'Không bắt buộc', (value) => picked.setChoice('maPhanHieu', value))),
+      formField(7, 'Mã phân hiệu', '', false, lockedField(session.phanHieuCode, 'Chưa có mã phân hiệu trên SMIS')),
       h('div', { class: 'field-action' }, [sendButton]),
     ]),
   });

@@ -21,7 +21,7 @@ export const ERROR_MESSAGES = {
   kqht_thoi_diem_invalid: 'Chọn thời điểm đánh giá.',
   kqht_mon_missing: 'Nhập mã môn học CSDL ngành.',
   kqht_hoc_ky_invalid: 'Chọn học kỳ 1 hoặc 2.',
-  phan_cong_phan_hieu_missing: 'Nhập mã phân hiệu để xuất phân công.',
+  phan_cong_phan_hieu_missing: 'Chưa có mã phân hiệu trên SMIS.',
   result_smis_class_missing: 'SMIS không có lớp trùng mã lớp CSDL ngành.',
   result_smis_subject_missing: 'SMIS không có môn trùng mã môn đã nhập.',
   result_smis_term_mismatch: 'Học kỳ đang chọn trên SMIS khác học kỳ của file.',
