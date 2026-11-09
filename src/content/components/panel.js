@@ -3,6 +3,7 @@ import { BaseIcon } from './base-icon.js';
 import { FeatureHoldView } from '../views/feature-hold-view.js';
 import { HomeView } from '../views/home-view.js';
 import { SettingsView } from '../views/settings-view.js';
+import { ExportSyncView } from '../views/export-sync-view.js';
 import { StaffPickView } from '../views/staff-pick-view.js';
 import { FEATURE_ROLE, sameSchoolCode } from '../lib/csdl-user.js';
 import { findFeature } from '../lib/feature-registry.js';
@@ -132,6 +133,12 @@ function resizeBox(start, edge, dx, dy, viewport) {
     width: Math.round(Math.max(1, width)),
     height: Math.round(Math.max(1, height)),
   };
+}
+
+function featureView(key) {
+  if (['staff', 'class', 'student'].includes(key)) return StaffPickView;
+  if (key === 'result' || key === 'teaching-assignment') return ExportSyncView;
+  return FeatureHoldView;
 }
 
 export const Panel = defineComponent({
@@ -443,7 +450,7 @@ export const Panel = defineComponent({
             settings
               ? h(SettingsView)
               : feature
-                ? h(['staff', 'class', 'student'].includes(feature.key) ? StaffPickView : FeatureHoldView, { key: feature.key, feature })
+                ? h(featureView(feature.key), { key: feature.key, feature })
                 : h(HomeView),
           ]),
           ui.frame === 'normal'

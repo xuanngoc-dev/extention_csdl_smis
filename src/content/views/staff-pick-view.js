@@ -1,7 +1,7 @@
 import { Teleport, defineComponent, h, inject, nextTick, onMounted, ref, watch } from 'vue';
 import { ElForm, ElFormItem } from 'element-plus/es/components/form/index.mjs';
 import { FilterSelect } from '../components/filter-select.js';
-import { base64ToBlob } from '../lib/blob-file.js';
+import { base64ToBlob, saveBlob } from '../lib/blob-file.js';
 import { translateError } from '../lib/errors.js';
 import { sendBackgroundMessage } from '../lib/message-bridge.js';
 import { schoolYearStart } from '../lib/staff-catalog.js';
@@ -22,6 +22,7 @@ export const StaffPickView = defineComponent({
     const dialogRef = ref(null);
     const formRef = ref(null);
     const downloadError = ref('');
+    const previewFile = ref(null);
     let confirmResolver = null;
 
     onMounted(() => picked.loadCapLevels());
@@ -57,6 +58,7 @@ export const StaffPickView = defineComponent({
           downloadError.value = translateError('staff_cap_unsupported');
           return;
         }
+        previewFile.value = loaded.file;
         step.value = 'confirm';
         const agreed = await askConfirm();
         if (!agreed || step.value !== 'confirm') return;
@@ -64,6 +66,7 @@ export const StaffPickView = defineComponent({
         await picked.uploadToSmis({ key: props.feature.key, cap: String(picked.capHoc), file: loaded.file });
       } finally {
         step.value = '';
+        previewFile.value = null;
       }
     }
 
@@ -113,7 +116,7 @@ export const StaffPickView = defineComponent({
         )),
         props.feature.key === 'staff' && picked.rows.length ? staffTable(picked) : null,
         downloadError.value ? downloadErrorDialog(downloadError.value, popperHost, () => { downloadError.value = ''; }) : null,
-        confirmOpen.value ? confirmDialog(props.feature.title, dialogRef, popperHost, settleConfirm) : null,
+        confirmOpen.value ? confirmDialog(props.feature.title, dialogRef, popperHost, settleConfirm, previewFile.value) : null,
         failure ? failureDialog(failure, popperHost, () => picked.clearSendFailure(), openFailurePage) : null,
         loadingText ? h('div', { class: 'screen-loading', role: 'status' }, [
           h('div', { class: 'screen-loading-card' }, [
@@ -127,9 +130,10 @@ export const StaffPickView = defineComponent({
   },
 });
 
-function importFileFromResult(result) {
+export function importFileFromResult(result) {
   if (!result?.ok || !result.data?.base64 || !String(result.data?.name || '').trim()) {
-    return { error: translateError(result?.error || 'staff_export_failed') };
+    const detail = String(result?.data?.detail || '').trim();
+    return { error: detail || translateError(result?.error || 'staff_export_failed') };
   }
   let blob;
   try {
@@ -292,7 +296,7 @@ function missing(text) {
   return h('span', { class: 'pick-missing' }, text);
 }
 
-function downloadErrorDialog(message, popperHost, onClose) {
+export function downloadErrorDialog(message, popperHost, onClose) {
   const dialog = h('div', { class: 'confirm-backdrop', onClick: onClose }, [
     h(
       'div',
@@ -321,7 +325,7 @@ function downloadErrorDialog(message, popperHost, onClose) {
   return popperHost ? h(Teleport, { to: popperHost }, [dialog]) : dialog;
 }
 
-function confirmDialog(kind, dialogRef, popperHost, onSettle) {
+export function confirmDialog(kind, dialogRef, popperHost, onSettle, file) {
   const dialog = h('div', { class: 'confirm-backdrop', onClick: () => onSettle(false) }, [
     h(
       'div',
@@ -342,9 +346,16 @@ function confirmDialog(kind, dialogRef, popperHost, onSettle) {
       [
         h('h3', { id: 'staff-confirm-title' }, 'Gửi sang SMIS'),
         h('p', `Xác nhận gửi dữ liệu ${kind} sang hệ thống SMIS?`),
-        h('div', { class: 'row-actions' }, [
-          h('button', { type: 'button', class: 'ghost-button', onClick: () => onSettle(false) }, 'Hủy'),
-          h('button', { type: 'button', class: 'primary-button', onClick: () => onSettle(true) }, 'Gửi'),
+        h('div', { class: 'row-actions is-send' }, [
+          file
+            ? h('button', {
+              type: 'button',
+              class: 'ghost-button',
+              onClick: () => saveBlob(file, file.name),
+            }, 'Xem trước khi gửi')
+            : null,
+          h('button', { type: 'button', class: 'primary-button', onClick: () => onSettle(true) }, 'Gửi dữ liệu'),
+          h('button', { type: 'button', class: 'ghost-button', onClick: () => onSettle(false) }, 'Huỷ'),
         ]),
       ],
     ),
@@ -352,7 +363,7 @@ function confirmDialog(kind, dialogRef, popperHost, onSettle) {
   return popperHost ? h(Teleport, { to: popperHost }, [dialog]) : dialog;
 }
 
-function failureDialog(failure, popperHost, onClose, onOpen) {
+export function failureDialog(failure, popperHost, onClose, onOpen) {
   const dialog = h('div', { class: 'confirm-backdrop', onClick: onClose }, [
     h(
       'div',

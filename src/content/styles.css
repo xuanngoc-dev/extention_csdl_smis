@@ -484,7 +484,7 @@
 
 .field-action .primary-button { width: 100%; }
 
-.filter-error { grid-column: 1 / -1; margin: 0; }
+.filter-error, .filter-note { grid-column: 1 / -1; margin: 0; }
 
 .select-popper-host {
   position: fixed;
@@ -678,6 +678,7 @@
 .confirm-dialog h3 { margin: 0 0 8px; font-size: 16px; }
 .confirm-dialog p { margin: 0; }
 .confirm-dialog .row-actions { justify-content: flex-end; margin-top: 16px; }
+.confirm-dialog .row-actions.is-send { justify-content: flex-start; }
 
 .banner {
   padding: 10px 12px;

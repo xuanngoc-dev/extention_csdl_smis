@@ -45,6 +45,10 @@ export const SMIS_LEVEL_NAMES = {
 export const TELERIK_TSM_STATE =
   ';;System.Web.Extensions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35:en-US:a8328cc8-0a99-4e41-8fe3-b58afac64e45:ea597d4b:b25378d2;Telerik.Web.UI, Version=2025.1.416.462, Culture=neutral, PublicKeyToken=121fae78165ba3d4:en-US:ced1f735-5c2a-4218-bd68-1813924fe936:16e4e7cd:f7645509:2003d0b8:24ee1bba:c128760b:1e771326:88144a7a:f46195d3:33715776:aa288e2d:258f1c72:58366029';
 
+/** Trang phân công mang thêm script Telerik ed16cbdc so với màn nhân sự. */
+export const ASSIGNMENT_TSM_STATE =
+  ';;System.Web.Extensions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35:en-US:a8328cc8-0a99-4e41-8fe3-b58afac64e45:ea597d4b:b25378d2;Telerik.Web.UI, Version=2025.1.416.462, Culture=neutral, PublicKeyToken=121fae78165ba3d4:en-US:ced1f735-5c2a-4218-bd68-1813924fe936:16e4e7cd:ed16cbdc:f7645509:88144a7a:2003d0b8:24ee1bba:c128760b:1e771326:f46195d3:33715776:aa288e2d:258f1c72:58366029';
+
 /** rcbColumnFull trên GiaoVienImportExcel có 62 cột. Bước tải lên chọn tất cả. */
 export const STAFF_IMPORT_COLUMN_COUNT = 62;
 

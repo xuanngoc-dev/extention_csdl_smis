@@ -26,6 +26,15 @@ export const useStaffPickStore = defineStore('staff-pick', {
     khoiHoc: '',
     tenLopHoc: '',
     maPhanHieu: '',
+    kqhtLoai: 'diem',
+    kqhtPhamVi: 'lop',
+    maLopHoc: '',
+    maLopSmis: '',
+    maMonHoc: '',
+    hocKy: '1',
+    thoiDiem: 'GK1',
+    phanCongLoai: 'chuyen-mon',
+    phanCongThoiDiem: 'DAU_NAM',
     sendKey: '',
     sendActive: false,
     sendNotice: '',
@@ -62,7 +71,7 @@ export const useStaffPickStore = defineStore('staff-pick', {
     clearSendFailure() {
       this.sendFailure = null;
     },
-    async uploadToSmis({ key, cap, file }) {
+    async uploadToSmis({ key, cap, file, filter }) {
       if (this.sendActive) return;
       const name = String(file?.name || '').trim();
       const bytes = file ? new Uint8Array(await file.arrayBuffer()) : new Uint8Array();
@@ -86,6 +95,7 @@ export const useStaffPickStore = defineStore('staff-pick', {
         const result = await uploadStaffOverPort({
           kind: key,
           cap,
+          filter: filter ?? null,
           file: {
             name: file.name,
             mime: file.type || 'application/vnd.ms-excel',
@@ -94,7 +104,7 @@ export const useStaffPickStore = defineStore('staff-pick', {
         });
         if (!result.ok && result.error === 'staff_send_cancelled') return;
         if (result.data?.resultFile) saveBase64File(result.data.resultFile);
-        const returned = String(result.data?.notification?.message ?? '').trim();
+        const returned = String(result.data?.notification?.message ?? '').trim() || String(result.data?.detail ?? '').trim();
         if (!result.ok) {
           this.sendFailure = {
             key,

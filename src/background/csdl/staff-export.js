@@ -7,7 +7,10 @@
 const EXPORT_TIMEOUT_MS = 120000;
 
 export async function exportTeacherFile(filter, path = 'giao-vien') {
-  const request = exportBody(filter);
+  return exportSmisFile(path, exportBody(filter), '.xls');
+}
+
+export async function exportSmisFile(path, request, extension = '.xls') {
   const response = await fetch(`${STAFF_EXPORT_BASE_URL}/${path}`, {
     method: 'POST',
     headers: {
@@ -18,16 +21,16 @@ export async function exportTeacherFile(filter, path = 'giao-vien') {
     cache: 'no-store',
     signal: AbortSignal.timeout(EXPORT_TIMEOUT_MS),
   });
+  const type = response.headers.get('Content-Type') || '';
   const bytes = new Uint8Array(await response.arrayBuffer());
-  if (!response.ok || !isSpreadsheet(bytes)) {
-    const detail = decodeText(bytes).replace(/\s+/g, ' ').trim().slice(0, 300);
+  if (!response.ok || /json/i.test(type) || !isSpreadsheet(bytes)) {
     const error = new Error('staff_export_failed');
-    error.detail = detail || `HTTP ${response.status}`;
+    error.detail = readExportError(bytes, response.status);
     throw error;
   }
-  const name = fileNameFromDisposition(response.headers.get('Content-Disposition')) || defaultFileName(path, request);
+  const name = fileNameFromDisposition(response.headers.get('Content-Disposition')) || defaultFileName(path, request, extension);
   return {
-    blob: new Blob([bytes], { type: response.headers.get('Content-Type') || 'application/vnd.ms-excel' }),
+    blob: new Blob([bytes], { type: type || 'application/vnd.ms-excel' }),
     name,
     bytes: bytes.byteLength,
     request,
@@ -48,12 +51,34 @@ function exportBody(filter) {
   };
 }
 
-function defaultFileName(path, request) {
-  const parts = [path, request.maTruongHoc, request.namHoc, `cap-${request.capHoc}`];
+function defaultFileName(path, request, extension) {
+  const parts = [path, request.maTruongHoc, request.namHoc];
+  if (request.capHoc != null) parts.push(`cap-${request.capHoc}`);
   if (request.khoiHoc != null) parts.push(`khoi-${request.khoiHoc}`);
   if (request.tenLopHoc) parts.push(`lop-${request.tenLopHoc}`);
+  if (request.maLopHoc) parts.push(`ma-lop-${request.maLopHoc}`);
+  if (request.maMonHoc) parts.push(`mon-${request.maMonHoc}`);
   if (request.maPhanHieu) parts.push(`phan-hieu-${request.maPhanHieu}`);
-  return `${parts.map((part) => String(part).trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, '-')).join('_')}.xls`;
+  if (request.thoiDiemDanhGia) parts.push(request.thoiDiemDanhGia);
+  if (request.thoiDiem) parts.push(request.thoiDiem);
+  if (request.hocKy != null) parts.push(`hk-${request.hocKy}`);
+  const stem = parts.map((part) => String(part).trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, '-')).join('_');
+  return `${stem}${extension}`;
+}
+
+function readExportError(bytes, status) {
+  const text = decodeText(bytes).trim();
+  if (text.startsWith('{') || text.startsWith('[')) {
+    try {
+      const error = JSON.parse(text);
+      const message = String(error.rd || error.message || '').trim();
+      if (message) return message.slice(0, 300);
+    } catch {
+      /* Body không phải JSON. */
+    }
+  }
+  if (!text || text.startsWith('<')) return `HTTP ${status}`;
+  return text.replace(/\s+/g, ' ').slice(0, 300);
 }
 
 function fileNameFromDisposition(header) {

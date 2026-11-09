@@ -4,7 +4,10 @@
  */
 import { SMIS_BASE_URL, SMIS_BROWSER_HEADERS, STAFF_UPLOAD_TIMEOUT_MS } from '../core/constants.js';
 import { toSyncErrorCode } from '../core/errors.js';
-import { exportTeacherFile } from '../csdl/staff-export.js';
+import { exportSmisFile, exportTeacherFile } from '../csdl/staff-export.js';
+import { buildKqhtRequest, buildPhanCongRequest } from '../../shared/smis-export.js';
+import { assignmentPageUrl, uploadAssignmentFile } from './assignment-upload.js';
+import { resultPageUrl, uploadResultFile } from './result-upload.js';
 import { extractPageTitle, mergeFormOverrides, parseFormInputsById, parseNotifications, parsePrimaryNotification } from '../net/aspnet.js';
 import { buildFormBody, buildUploadFormData, emptyUploadFile, fetchSmisPage, fetchWithDnrRule, isLoginRedirect, isServerErrorPage, postAspNetForm, postSmisAjax, postUploadForm, signalWithTimeout } from '../net/http.js';
 import { buildClassImportSteps, buildStaffImportSteps } from '../net/staff-form.js';
@@ -33,6 +36,12 @@ const IMPORT_KINDS = {
 export async function downloadStaffImport(payload) {
   try {
     const filter = payload?.filter ?? {};
+    const requested = exportRequest(payload?.kind, filter);
+    if (requested) {
+      if (!requested.ok) return requested;
+      const file = await exportSmisFile(requested.path, requested.body, requested.extension);
+      return await importFileResult(file);
+    }
     const cap = String(filter.capHoc ?? '');
     if (!String(filter.maTruongHoc ?? '').trim() || !String(filter.namHoc ?? '').trim() || !cap) {
       return { ok: false, error: 'staff_filter_missing' };
@@ -40,10 +49,19 @@ export async function downloadStaffImport(payload) {
     if (!['1', '2', '3'].includes(cap)) return { ok: false, error: 'staff_cap_unsupported' };
     const kind = importKind(payload?.kind);
     const file = await exportTeacherFile(filter, kind.exportPath);
-    const bytes = new Uint8Array(await file.blob.arrayBuffer());
-    if (!String(file.name || '').trim() || bytes.byteLength === 0) {
-      return { ok: false, error: 'staff_export_failed' };
-    }
+    return await importFileResult(file);
+  } catch (error) {
+    console.log('[csdl][sync-staff]', error);
+    const code = error instanceof Error && error.message.startsWith('staff_') ? error.message : 'staff_export_failed';
+    const detail = error instanceof Error ? String(error.detail || '').trim() : '';
+    return detail ? { ok: false, error: code, data: { detail } } : { ok: false, error: code };
+  }
+}
+
+function importFileResult(file) {
+  return file.blob.arrayBuffer().then((buffer) => {
+    const bytes = new Uint8Array(buffer);
+    if (!String(file.name || '').trim() || bytes.byteLength === 0) return { ok: false, error: 'staff_export_failed' };
     console.log('[csdl][sync-staff]', `Tải file import ${file.name}, ${bytes.byteLength} byte`);
     return {
       ok: true,
@@ -53,11 +71,13 @@ export async function downloadStaffImport(payload) {
         base64: bytesToBase64(bytes),
       },
     };
-  } catch (error) {
-    console.log('[csdl][sync-staff]', error);
-    const code = error instanceof Error && error.message.startsWith('staff_') ? error.message : 'staff_export_failed';
-    return { ok: false, error: code };
-  }
+  });
+}
+
+function exportRequest(kind, filter) {
+  if (kind === 'result') return buildKqhtRequest(filter);
+  if (kind === 'teaching-assignment') return buildPhanCongRequest(filter);
+  return null;
 }
 
 export async function uploadStaffFile(payload, signal) {
@@ -78,8 +98,9 @@ async function runStaffUpload(payload, signal) {
     logs.push(message);
     console.log('[csdl][sync-staff]', message);
   };
-  const pageUrl = smisImportUrl(payload);
-  const fail = (error, data = {}) => ({ ok: false, error, data: { ...data, logs, pageUrl } });
+  const target = { url: smisImportUrl(payload) };
+  const pageUrl = target.url;
+  const fail = (error, data = {}) => ({ ok: false, error, data: { ...data, logs, pageUrl: data.pageUrl || target.url } });
 
   const cap = String(payload?.cap ?? '');
   if (!['1', '2', '3'].includes(cap)) return fail('staff_cap_unsupported');
@@ -92,6 +113,9 @@ async function runStaffUpload(payload, signal) {
     bytes: bytes.byteLength,
   };
   note(`Gửi file ${file.name}, ${file.bytes} byte, cấp ${cap}`);
+
+  if (payload?.kind === 'result') return uploadResultFile({ payload, file, note, fail, signal, target });
+  if (payload?.kind === 'teaching-assignment') return uploadAssignmentFile({ payload, file, note, fail, signal, target });
 
   const kind = importKind(payload?.kind);
   if (payload?.kind === 'student' || kind.page.startsWith('HocSinh')) {
@@ -139,6 +163,14 @@ function importKind(key) {
 function smisImportUrl(payload) {
   const cap = String(payload?.cap ?? '');
   if (!['1', '2', '3'].includes(cap)) return '';
+  if (payload?.kind === 'result') {
+    const built = buildKqhtRequest(payload?.filter ?? {});
+    return built.ok ? resultPageUrl(cap, built) : '';
+  }
+  if (payload?.kind === 'teaching-assignment') {
+    const built = buildPhanCongRequest(payload?.filter ?? {});
+    return built.ok ? assignmentPageUrl(cap, built.loai) : '';
+  }
   return `${SMIS_BASE_URL}/C${cap}/${importKind(payload?.kind).page}`;
 }
 
