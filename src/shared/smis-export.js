@@ -49,15 +49,9 @@ export function buildKqhtRequest(filter) {
   const theoKhoi = !cap1 && loai === 'diem' && filter?.phamVi === 'khoi';
   const maLopHoc = String(filter?.maLopHoc ?? '').trim();
   const maLopSmis = String(filter?.maLopSmis ?? '').trim();
+  const grade = readGrade(common.khoiText, gradeBounds(cap));
+  if (!grade.ok) return grade.error;
   if (!theoKhoi && !maLopHoc) return { ok: false, error: 'kqht_lop_missing' };
-
-  const bounds = gradeBounds(cap);
-  const grade = readGrade(common.khoiText, bounds);
-  if (cap1 || theoKhoi) {
-    if (!grade.ok) return grade.error;
-  } else if (!gvcn && common.khoiText && !grade.ok) {
-    return grade.error;
-  }
 
   const body = { maTruongHoc: common.maTruongHoc, namHoc: common.namHoc };
   let path;
@@ -145,8 +139,18 @@ function gradeBounds(cap) {
 }
 
 function readGrade(text, bounds) {
+  if (!text) {
+    return {
+      ok: false,
+      error: {
+        ok: false,
+        error: 'kqht_khoi_invalid',
+        data: { detail: 'Chọn khối học' },
+      },
+    };
+  }
   const value = Number(text);
-  if (!text || !Number.isInteger(value) || value < bounds.min || value > bounds.max) {
+  if (!Number.isInteger(value) || value < bounds.min || value > bounds.max) {
     return {
       ok: false,
       error: {

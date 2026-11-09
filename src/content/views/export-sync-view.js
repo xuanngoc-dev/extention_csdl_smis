@@ -62,6 +62,7 @@ export const ExportSyncView = defineComponent({
     const classOptions = ref([]);
     const classLoading = ref(false);
     const classError = ref('');
+    const fieldErrors = ref({});
     let confirmResolver = null;
     let appliedTerm = false;
     let classRequest = 0;
@@ -156,9 +157,29 @@ export const ExportSyncView = defineComponent({
       }
     }
 
+    function choose(name, value) {
+      picked.setChoice(name, value);
+      if (!fieldErrors.value[name]) return;
+      const next = { ...fieldErrors.value };
+      delete next[name];
+      fieldErrors.value = next;
+    }
+
+    function classStateNow() {
+      return {
+        options: classOptions.value,
+        loading: classLoading.value,
+        error: classError.value,
+      };
+    }
+
     async function sendToSmis() {
       if (step.value || picked.sendActive) return;
-      if (!(await validateFields(formRef.value, ['namHoc', 'capHoc', 'maTruongHoc']))) return;
+      const fields = props.feature.key === 'result'
+        ? resultFields(picked, session, classStateNow(), choose)
+        : assignmentFields(picked, session, choose);
+      fieldErrors.value = runRules(fields, picked);
+      if (Object.keys(fieldErrors.value).length) return;
       const filter = exportFilter(picked, props.feature.key);
       const built = props.feature.key === 'result' ? buildKqhtRequest(filter) : buildPhanCongRequest(filter);
       if (!built.ok) {
@@ -231,11 +252,7 @@ export const ExportSyncView = defineComponent({
       return h('div', { class: 'screen' }, [
         // h('p', props.feature.desc),
         // target ? h('p', { class: 'muted' }, `Đích ghi SMIS: ${target}`) : null,
-        filterForm(props.feature.key, picked, session, formRef, {
-          options: classOptions.value,
-          loading: classLoading.value,
-          error: classError.value,
-        }, h(
+        filterForm(props.feature.key, picked, session, formRef, classStateNow(), fieldErrors.value, choose, h(
           'button',
           {
             type: 'button',
@@ -304,19 +321,20 @@ function exportFilter(picked, key) {
   };
 }
 
-function filterForm(key, picked, session, formRef, classState, sendButton) {
-  const fields = key === 'result' ? resultFields(picked, session, classState) : assignmentFields(picked, session);
+function filterForm(key, picked, session, formRef, classState, fieldErrors, choose, sendButton) {
+  const fields = key === 'result' ? resultFields(picked, session, classState, choose) : assignmentFields(picked, session, choose);
   return h(ElForm, {
     ref: formRef,
     class: 'filter-form',
     model: picked,
-    rules: FILTER_RULES,
+    rules: rulesFrom(fields),
+    validateOnRuleChange: false,
     labelPosition: 'top',
     hideRequiredAsterisk: true,
     scrollToError: true,
   }, {
     default: () => h('div', { class: 'filter-grid' }, [
-      ...fields.map((field, index) => formField(index + 1, field)),
+      ...fields.map((field, index) => formField(index + 1, field, fieldErrors)),
       key === 'result' ? resultHint(picked) : h('p', { class: 'muted filter-note' }, 'Xuất toàn bộ phân công trong phân hiệu. Mã phân hiệu là bắt buộc.'),
       key === 'result' && classState?.error ? h('p', { class: 'error filter-note' }, classState.error) : null,
       h('div', { class: 'field-action' }, [sendButton]),
@@ -324,40 +342,43 @@ function filterForm(key, picked, session, formRef, classState, sendButton) {
   });
 }
 
-function resultFields(picked, session, classState) {
+function resultFields(picked, session, classState, choose) {
   const mode = resultMode(picked);
   const grades = gradeOptions(picked.capHoc);
   const fields = [
     locked('Tên trường', session.school, 'Chưa có tên trường trên SMIS'),
-    locked('Mã trường', session.schoolCode, 'Chưa có mã trường trên SMIS', 'maTruongHoc'),
-    locked('Năm học', session.year, 'Chưa có năm học trên SMIS', 'namHoc'),
+    locked('Mã trường', session.schoolCode, 'Chưa có mã trường trên SMIS', 'maTruongHoc', [rule(validateSchool, 'Chưa có mã trường trên SMIS')]),
+    locked('Năm học', session.year, 'Chưa có năm học trên SMIS', 'namHoc', [rule(validateYear, 'Chưa có năm học trên SMIS')]),
     {
       label: 'Cấp học',
       prop: 'capHoc',
       required: true,
+      rules: [rule(validateCap, 'Chọn cấp học')],
       control: h(FilterSelect, {
         modelValue: picked.capHoc,
-        'onUpdate:modelValue': (value) => picked.setChoice('capHoc', value),
+        'onUpdate:modelValue': (value) => choose('capHoc', value),
         disabled: picked.caps.length === 1,
         placeholder: picked.caps.length ? 'Chọn cấp học' : 'Chưa có cấp học',
         options: picked.caps.map((cap) => ({ value: String(cap.id), label: cap.name })),
       }),
     },
-    selectField('Loại file', picked.kqhtLoai, resultKindOptions(picked.capHoc), (value) => picked.setChoice('kqhtLoai', value)),
+    selectField('Loại file', 'kqhtLoai', picked.kqhtLoai, resultKindOptions(picked.capHoc), (value) => choose('kqhtLoai', value), 'Chọn loại file'),
   ];
   if (mode.scoreByGrade) {
-    fields.push(selectField('Phạm vi xuất điểm', picked.kqhtPhamVi, SCOPES, (value) => picked.setChoice('kqhtPhamVi', value)));
+    fields.push(selectField('Phạm vi xuất điểm', 'kqhtPhamVi', picked.kqhtPhamVi, SCOPES, (value) => choose('kqhtPhamVi', value), 'Chọn phạm vi xuất điểm'));
   }
   if (grades.length) {
-    fields.push(selectField('Khối học', picked.khoiHoc, grades, (value) => picked.setChoice('khoiHoc', value), 'Chọn khối học'));
+    fields.push(selectField('Khối học', 'khoiHoc', picked.khoiHoc, grades, (value) => choose('khoiHoc', value), 'Chọn khối học'));
   }
   if (grades.length && !mode.theoKhoi) {
     fields.push({
       label: 'Lớp học',
+      prop: 'maLopHoc',
       required: true,
+      rules: [rule((value, callback) => validateClass(value, classState, picked.khoiHoc, callback), 'Chọn lớp học')],
       control: h(FilterSelect, {
         modelValue: picked.maLopHoc,
-        'onUpdate:modelValue': (value) => picked.setChoice('maLopHoc', value),
+        'onUpdate:modelValue': (value) => choose('maLopHoc', value),
         disabled: !picked.khoiHoc,
         loading: Boolean(classState?.loading),
         placeholder: picked.khoiHoc ? 'Chọn lớp' : 'Chọn khối học trước',
@@ -372,49 +393,54 @@ function resultFields(picked, session, classState) {
   if (mode.cap23 && !mode.gvcn) {
     fields.push({
       label: 'Mã môn học CSDLN',
+      prop: 'maMonHoc',
       required: true,
-      control: textField(picked.maMonHoc, 'VD: TOC2, TOC3', (value) => picked.setChoice('maMonHoc', value)),
+      rules: [rule(requireText('Nhập mã môn học CSDL ngành.'), 'Nhập mã môn học CSDL ngành.')],
+      control: textField(picked.maMonHoc, 'VD: TOC2, TOC3', (value) => choose('maMonHoc', value)),
     });
-    fields.push(selectField('Học kỳ', picked.hocKy, TERMS, (value) => picked.setChoice('hocKy', value)));
+    fields.push(selectField('Học kỳ', 'hocKy', picked.hocKy, TERMS, (value) => choose('hocKy', value), 'Chọn học kỳ'));
   }
   if (mode.cap1 && !mode.gvcn) {
-    fields.push(selectField('Thời điểm đánh giá', picked.thoiDiem, PERIODS, (value) => picked.setChoice('thoiDiem', value)));
+    fields.push(selectField('Thời điểm đánh giá', 'thoiDiem', picked.thoiDiem, PERIODS, (value) => choose('thoiDiem', value), 'Chọn thời điểm đánh giá'));
   }
   if (mode.cap1) {
     fields.push({
       label: 'Mã phân hiệu',
-      control: textField(picked.maPhanHieu, 'Không bắt buộc', (value) => picked.setChoice('maPhanHieu', value)),
+      control: textField(picked.maPhanHieu, 'Không bắt buộc', (value) => choose('maPhanHieu', value)),
     });
   }
   return fields;
 }
 
-function assignmentFields(picked, session) {
+function assignmentFields(picked, session, choose) {
   const homeroom = picked.phanCongLoai === 'chu-nhiem';
   return [
     locked('Tên trường', session.school, 'Chưa có tên trường trên SMIS'),
-    locked('Mã trường', session.schoolCode, 'Chưa có mã trường trên SMIS', 'maTruongHoc'),
-    locked('Năm học', session.year, 'Chưa có năm học trên SMIS', 'namHoc'),
+    locked('Mã trường', session.schoolCode, 'Chưa có mã trường trên SMIS', 'maTruongHoc', [rule(validateSchool, 'Chưa có mã trường trên SMIS')]),
+    locked('Năm học', session.year, 'Chưa có năm học trên SMIS', 'namHoc', [rule(validateYear, 'Chưa có năm học trên SMIS')]),
     {
       label: 'Cấp học',
       prop: 'capHoc',
       required: true,
+      rules: [rule(validateCap, 'Chọn cấp học')],
       control: h(FilterSelect, {
         modelValue: picked.capHoc,
-        'onUpdate:modelValue': (value) => picked.setChoice('capHoc', value),
+        'onUpdate:modelValue': (value) => choose('capHoc', value),
         disabled: picked.caps.length === 1,
         placeholder: picked.caps.length ? 'Chọn cấp học' : 'Chưa có cấp học',
         options: picked.caps.map((cap) => ({ value: String(cap.id), label: cap.name })),
       }),
     },
-    selectField('Loại phân công', picked.phanCongLoai, ASSIGNMENT_KINDS, (value) => picked.setChoice('phanCongLoai', value)),
+    selectField('Loại phân công', 'phanCongLoai', picked.phanCongLoai, ASSIGNMENT_KINDS, (value) => choose('phanCongLoai', value), 'Chọn loại phân công'),
     homeroom
-      ? selectField('Thời điểm chủ nhiệm', picked.phanCongThoiDiem, MOMENTS, (value) => picked.setChoice('phanCongThoiDiem', value))
-      : selectField('Học kỳ chuyên môn', picked.hocKy, TERMS, (value) => picked.setChoice('hocKy', value)),
+      ? selectField('Thời điểm chủ nhiệm', 'phanCongThoiDiem', picked.phanCongThoiDiem, MOMENTS, (value) => choose('phanCongThoiDiem', value), 'Chọn thời điểm chủ nhiệm')
+      : selectField('Học kỳ chuyên môn', 'hocKy', picked.hocKy, TERMS, (value) => choose('hocKy', value), 'Chọn học kỳ'),
     {
       label: 'Mã phân hiệu',
+      prop: 'maPhanHieu',
       required: true,
-      control: textField(picked.maPhanHieu, 'Bắt buộc', (value) => picked.setChoice('maPhanHieu', value)),
+      rules: [rule(requireText('Nhập mã phân hiệu để xuất phân công.'), 'Nhập mã phân hiệu để xuất phân công.')],
+      control: textField(picked.maPhanHieu, 'Bắt buộc', (value) => choose('maPhanHieu', value)),
     },
   ];
 }
@@ -443,11 +469,12 @@ function resultHint(picked) {
   // return h('p', { class: 'muted filter-note' }, text);
 }
 
-function locked(label, value, placeholder, prop = '') {
+function locked(label, value, placeholder, prop = '', rules = null) {
   return {
     label,
     prop,
     required: Boolean(prop),
+    rules,
     control: h('input', {
       class: 'field-input',
       type: 'text',
@@ -459,14 +486,17 @@ function locked(label, value, placeholder, prop = '') {
   };
 }
 
-function selectField(label, value, options, onChange, placeholder = 'Chọn') {
+function selectField(label, prop, value, options, onChange, message) {
+  const allowed = options.map((item) => item.value);
   return {
     label,
+    prop,
     required: true,
+    rules: [rule(oneOf(message, allowed), message)],
     control: h(FilterSelect, {
       modelValue: value,
       'onUpdate:modelValue': onChange,
-      placeholder,
+      placeholder: message,
       options,
     }),
   };
@@ -482,8 +512,14 @@ function textField(value, placeholder, onInput) {
   });
 }
 
-function formField(index, field) {
-  return h(ElFormItem, field.prop ? { prop: field.prop } : {}, {
+function formField(index, field, fieldErrors) {
+  const item = { key: field.prop || field.label };
+  if (field.prop) {
+    item.prop = field.prop;
+    if (field.rules) item.rules = field.rules;
+    if (fieldErrors?.[field.prop]) item.error = fieldErrors[field.prop];
+  }
+  return h(ElFormItem, item, {
     label: () => h('span', { class: 'field-label' }, [
       h('span', { class: field.required ? 'field-index is-required' : 'field-index' }, `[${index}]`),
       ` ${field.label}`,
@@ -492,13 +528,65 @@ function formField(index, field) {
   });
 }
 
-const FILTER_RULES = {
-  namHoc: [{ validator: validateYear, trigger: 'change' }],
-  capHoc: [{ validator: validateCap, trigger: 'change' }],
-  maTruongHoc: [{ validator: validateSchool, trigger: 'change' }],
-};
+function rulesFrom(fields) {
+  const rules = {};
+  for (const field of fields) {
+    if (field.prop && field.rules) rules[field.prop] = field.rules;
+  }
+  return rules;
+}
 
-function validateYear(_rule, value, callback) {
+function runRules(fields, model) {
+  const errors = {};
+  for (const field of fields) {
+    if (!field.prop || !field.rules) continue;
+    const value = model[field.prop];
+    for (const item of field.rules) {
+      let message = '';
+      item.validator(item, value, (error) => {
+        if (error) message = error instanceof Error ? error.message : String(error);
+      });
+      if (message) {
+        errors[field.prop] = message;
+        break;
+      }
+    }
+  }
+  return errors;
+}
+
+function rule(check, message) {
+  return {
+    required: true,
+    message,
+    validator(_rule, value, callback) {
+      check(value, callback);
+    },
+    trigger: 'change',
+  };
+}
+
+function requireText(message) {
+  return (value, callback) => {
+    if (!String(value || '').trim()) {
+      callback(new Error(message));
+      return;
+    }
+    callback();
+  };
+}
+
+function oneOf(message, allowed) {
+  return (value, callback) => {
+    if (!allowed.includes(String(value || ''))) {
+      callback(new Error(message));
+      return;
+    }
+    callback();
+  };
+}
+
+function validateYear(value, callback) {
   if (!schoolYearStart(value)) {
     callback(new Error('Chưa có năm học trên SMIS'));
     return;
@@ -506,7 +594,7 @@ function validateYear(_rule, value, callback) {
   callback();
 }
 
-function validateSchool(_rule, value, callback) {
+function validateSchool(value, callback) {
   if (!String(value || '').trim()) {
     callback(new Error('Chưa có mã trường trên SMIS'));
     return;
@@ -514,7 +602,7 @@ function validateSchool(_rule, value, callback) {
   callback();
 }
 
-function validateCap(_rule, value, callback) {
+function validateCap(value, callback) {
   if (!value) {
     callback(new Error('Chọn cấp học'));
     return;
@@ -526,11 +614,27 @@ function validateCap(_rule, value, callback) {
   callback();
 }
 
-async function validateFields(form, names) {
-  if (!form?.validateField) return false;
-  try {
-    return await form.validateField(names) === true;
-  } catch {
-    return false;
+function validateClass(value, classState, khoi, callback) {
+  if (!String(khoi || '').trim()) {
+    callback(new Error('Chọn khối học trước'));
+    return;
   }
+  if (classState?.loading) {
+    callback(new Error('Đang tải danh sách lớp.'));
+    return;
+  }
+  if (classState?.error) {
+    callback(new Error(classState.error));
+    return;
+  }
+  const options = classState?.options ?? [];
+  if (!options.length) {
+    callback(new Error('Không có lớp cho khối này.'));
+    return;
+  }
+  if (!options.some((row) => row.value === String(value || ''))) {
+    callback(new Error('Chọn lớp học'));
+    return;
+  }
+  callback();
 }
