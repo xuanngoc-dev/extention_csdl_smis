@@ -30,7 +30,7 @@ export const ERROR_MESSAGES = {
   staff_file_missing: 'Chưa có file import để gửi sang SMIS.',
   smis_cap_missing: 'Chưa chọn cấp học trên SMIS. Hãy chọn năm học trước khi ghi.',
   step1_server_error: 'SMIS báo lỗi máy chủ ở bước Tải lên.',
-  step1_no_write_button: 'SMIS không hiện nút Ghi sau khi tải file.',
+  step1_no_write_button: 'Gửi dữ liệu thất bại. Vui lòng thử lại sau.',
   step2_server_error: 'SMIS báo lỗi máy chủ ở bước Ghi.',
   smis_rejected: 'SMIS không nhận file nhân sự.',
   form_not_found: 'Không đọc được form của trang SMIS.',
