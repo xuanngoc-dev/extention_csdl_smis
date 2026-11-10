@@ -61,7 +61,6 @@ export const ExportSyncView = defineComponent({
     const formRef = ref(null);
     const downloadError = ref('');
     const previewFile = ref(null);
-    const templateFile = ref(null);
     const apiInputFile = ref(null);
     const apiPreviewOpen = ref(false);
     const classOptions = ref([]);
@@ -237,7 +236,6 @@ export const ExportSyncView = defineComponent({
           return;
         }
         previewFile.value = showImportPreview ? loaded.file : null;
-        templateFile.value = loaded.template;
         step.value = 'confirm';
         const agreed = await askConfirm();
         if (!agreed || step.value !== 'confirm') return;
@@ -246,7 +244,6 @@ export const ExportSyncView = defineComponent({
       } finally {
         step.value = '';
         previewFile.value = null;
-        templateFile.value = null;
         apiInputFile.value = null;
       }
     }
@@ -322,7 +319,7 @@ export const ExportSyncView = defineComponent({
         )),
         downloadError.value ? downloadErrorDialog(downloadError.value, popperHost, () => { downloadError.value = ''; }) : null,
         apiPreviewOpen.value ? templatePreviewDialog(dialogRef, popperHost, settleApiPreview, apiInputFile.value) : null,
-        confirmOpen.value ? confirmDialog(props.feature.title, dialogRef, popperHost, settleConfirm, previewFile.value, templateFile.value) : null,
+        confirmOpen.value ? confirmDialog(props.feature.title, dialogRef, popperHost, settleConfirm, previewFile.value) : null,
         failure ? failureDialog(failure, popperHost, () => picked.clearSendFailure(), openFailurePage) : null,
         result ? resultDialog(result.detail, popperHost, () => picked.clearSendResult()) : null,
         loadingText ? h('div', { class: 'screen-loading', role: 'status' }, [

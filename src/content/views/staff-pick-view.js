@@ -357,7 +357,7 @@ export function templatePreviewDialog(dialogRef, popperHost, onSettle, file) {
   return popperHost ? h(Teleport, { to: popperHost }, [dialog]) : dialog;
 }
 
-export function confirmDialog(kind, dialogRef, popperHost, onSettle, file, templateFile) {
+export function confirmDialog(kind, dialogRef, popperHost, onSettle, file) {
   const dialog = h('div', { class: 'confirm-backdrop', onClick: () => onSettle(false) }, [
     h(
       'div',
@@ -379,13 +379,6 @@ export function confirmDialog(kind, dialogRef, popperHost, onSettle, file, templ
         h('h3', { id: 'staff-confirm-title' }, 'Gửi sang SMIS'),
         h('p', `Xác nhận gửi dữ liệu ${kind} sang hệ thống SMIS?`),
         h('div', { class: 'row-actions is-send' }, [
-          templateFile
-            ? h('button', {
-              type: 'button',
-              class: 'ghost-button',
-              onClick: () => saveBlob(templateFile, templateFile.name),
-            }, 'Xem file mẫu SMIS')
-            : null,
           file
             ? h('button', {
               type: 'button',
