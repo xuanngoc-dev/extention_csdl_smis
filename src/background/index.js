@@ -60,8 +60,17 @@ browserApi.runtime.onConnect.addListener((port) => {
   });
   port.onMessage.addListener((message) => {
     if (message?.type !== MESSAGE_TYPE) return;
+    const keepAlive = setInterval(() => {
+      try {
+        const pending = browserApi.runtime.getPlatformInfo();
+        if (pending && typeof pending.catch === 'function') pending.catch(() => {});
+      } catch {
+        /* Nhịp này chỉ giữ service worker trong lúc SMIS xử lý lâu. */
+      }
+    }, 20000);
     uploadStaffFile(message.payload, controller.signal).then((result) => {
       finished = true;
+      clearInterval(keepAlive);
       try {
         port.postMessage(result);
       } catch {

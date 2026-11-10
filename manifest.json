@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Trợ lý CSDL",
   "description": "Đọc dữ liệu trên cổng đồng bộ CSDL ngành và ghi sang SMIS.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "icons": {
     "16": "icon/16.png",
     "32": "icon/32.png",
@@ -36,19 +36,13 @@
   "content_scripts": [
     {
       "matches": ["https://dongbo.csdl.edu.vn/*"],
-      "js": ["content-scripts/page-hook.js"],
-      "run_at": "document_start",
-      "world": "MAIN"
-    },
-    {
-      "matches": ["https://dongbo.csdl.edu.vn/*"],
       "js": ["content-scripts/csdl.js"],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["content-scripts/csdl.css", "content-scripts/catalog-bridge.js"],
+      "resources": ["content-scripts/csdl.css"],
       "matches": ["https://dongbo.csdl.edu.vn/*"]
     }
   ]

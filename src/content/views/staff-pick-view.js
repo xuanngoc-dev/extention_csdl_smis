@@ -103,11 +103,12 @@ export const StaffPickView = defineComponent({
       const loadingText = step.value === 'download'
         ? 'Đang tải file import…'
         : (step.value === 'send' || sending)
-          ? 'Đang gửi dữ liệu sang SMIS'
+          ? 'Đang gửi dữ liệu sang SMIS. Vui lòng đợi trong giây lát.'
           : '';
       const busy = Boolean(step.value || sending);
       const sendNotice = !loadingText && picked.sendKey === props.feature.key ? picked.sendNotice : '';
       const failure = !loadingText && picked.sendFailure?.key === props.feature.key ? picked.sendFailure : null;
+      const result = !loadingText && !failure && picked.sendResult?.key === props.feature.key ? picked.sendResult : null;
       return h('div', { class: 'screen' }, [
         h('p', props.feature.desc),
         filterFields(picked, session, formRef, h(
@@ -121,10 +122,10 @@ export const StaffPickView = defineComponent({
           },
           'Gửi sang SMIS',
         )),
-        props.feature.key === 'staff' && picked.rows.length ? staffTable(picked) : null,
         downloadError.value ? downloadErrorDialog(downloadError.value, popperHost, () => { downloadError.value = ''; }) : null,
         confirmOpen.value ? confirmDialog(props.feature.title, dialogRef, popperHost, settleConfirm, previewFile.value) : null,
         failure ? failureDialog(failure, popperHost, () => picked.clearSendFailure(), openFailurePage) : null,
+        result ? resultDialog(result.detail, popperHost, () => picked.clearSendResult()) : null,
         loadingText ? h('div', { class: 'screen-loading', role: 'status' }, [
           h('div', { class: 'screen-loading-card' }, [
             h('span', { class: 'spinner', 'aria-hidden': 'true' }),
@@ -277,32 +278,6 @@ function textField(value, placeholder, onInput) {
   });
 }
 
-function staffTable(picked) {
-  return h('div', { class: 'pick-wrap' }, [
-    h('table', { class: 'schema-table pick-table' }, [
-      h('thead', [
-        h('tr', [h('th', 'STT'), h('th', 'Mã định danh'), h('th', 'Họ tên'), h('th', 'Nhóm chức vụ'), h('th', 'Vị trí việc làm')]),
-      ]),
-      h(
-        'tbody',
-        picked.rows.map((row) =>
-          h('tr', { key: `${row.stt}-${row.code}-${row.maGiaoVien}` }, [
-            h('td', row.stt),
-            h('td', row.code || missing('Thiếu mã')),
-            h('td', row.name || missing('Thiếu họ tên')),
-            h('td', row.chucVu || '—'),
-            h('td', row.position || '—'),
-          ]),
-        ),
-      ),
-    ]),
-  ]);
-}
-
-function missing(text) {
-  return h('span', { class: 'pick-missing' }, text);
-}
-
 export function downloadErrorDialog(message, popperHost, onClose) {
   const dialog = h('div', { class: 'confirm-backdrop', onClick: onClose }, [
     h(
@@ -363,6 +338,35 @@ export function confirmDialog(kind, dialogRef, popperHost, onSettle, file) {
             : null,
           h('button', { type: 'button', class: 'primary-button', onClick: () => onSettle(true) }, 'Gửi dữ liệu'),
           h('button', { type: 'button', class: 'ghost-button', onClick: () => onSettle(false) }, 'Huỷ'),
+        ]),
+      ],
+    ),
+  ]);
+  return popperHost ? h(Teleport, { to: popperHost }, [dialog]) : dialog;
+}
+
+export function resultDialog(detail, popperHost, onClose) {
+  const dialog = h('div', { class: 'confirm-backdrop', onClick: onClose }, [
+    h(
+      'div',
+      {
+        class: 'confirm-dialog',
+        tabindex: '-1',
+        role: 'alertdialog',
+        'aria-modal': 'true',
+        'aria-labelledby': 'staff-result-title',
+        onClick: (event) => event.stopPropagation(),
+        onKeydown: (event) => {
+          if (event.key !== 'Escape') return;
+          event.stopPropagation();
+          onClose();
+        },
+      },
+      [
+        h('h3', { id: 'staff-result-title' }, 'Đã gửi sang SMIS'),
+        h('p', detail || 'Đã gửi file sang SMIS.'),
+        h('div', { class: 'row-actions' }, [
+          h('button', { type: 'button', class: 'primary-button', onClick: onClose }, 'Đóng'),
         ]),
       ],
     ),

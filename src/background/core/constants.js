@@ -54,6 +54,9 @@ export const STAFF_IMPORT_COLUMN_COUNT = 62;
 
 export const STAFF_UPLOAD_TIMEOUT_MS = 180000;
 
+/** Học sinh nhiều dòng: SMIS có thể nhập xong sau vài phút. Chờ đủ lâu để đọc notification(). */
+export const STUDENT_IMPORT_TIMEOUT_MS = 900000;
+
 export const SMIS_BROWSER_HEADERS = {
   Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
   'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.6,en;q=0.5',

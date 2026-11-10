@@ -8,7 +8,7 @@ import { gradeOptions, loadClasses } from '../lib/class-catalog.js';
 import { assignmentImportPage, buildKqhtRequest, buildPhanCongRequest, resultImportPage } from '../../shared/smis-export.js';
 import { useSessionStore } from '../stores/session.js';
 import { useStaffPickStore } from '../stores/staff-pick.js';
-import { confirmDialog, downloadErrorDialog, failureDialog, importFileFromResult } from './staff-pick-view.js';
+import { confirmDialog, downloadErrorDialog, failureDialog, importFileFromResult, resultDialog } from './staff-pick-view.js';
 
 const RESULT_KINDS = [
   { value: 'diem', label: 'Điểm / Kết quả môn học' },
@@ -242,11 +242,12 @@ export const ExportSyncView = defineComponent({
       const loadingText = step.value === 'download'
         ? 'Đang tải file import…'
         : (step.value === 'send' || sending)
-          ? 'Đang gửi dữ liệu sang SMIS'
+          ? 'Đang gửi dữ liệu sang SMIS. Vui lòng đợi trong giây lát.'
           : '';
       const busy = Boolean(step.value || sending);
       const sendNotice = !loadingText && picked.sendKey === props.feature.key ? picked.sendNotice : '';
       const failure = !loadingText && picked.sendFailure?.key === props.feature.key ? picked.sendFailure : null;
+      const result = !loadingText && !failure && picked.sendResult?.key === props.feature.key ? picked.sendResult : null;
       const target = destination(props.feature.key, picked);
       return h('div', { class: 'screen' }, [
         // h('p', props.feature.desc),
@@ -265,6 +266,7 @@ export const ExportSyncView = defineComponent({
         downloadError.value ? downloadErrorDialog(downloadError.value, popperHost, () => { downloadError.value = ''; }) : null,
         confirmOpen.value ? confirmDialog(props.feature.title, dialogRef, popperHost, settleConfirm, previewFile.value) : null,
         failure ? failureDialog(failure, popperHost, () => picked.clearSendFailure(), openFailurePage) : null,
+        result ? resultDialog(result.detail, popperHost, () => picked.clearSendResult()) : null,
         loadingText ? h('div', { class: 'screen-loading', role: 'status' }, [
           h('div', { class: 'screen-loading-card' }, [
             h('span', { class: 'spinner', 'aria-hidden': 'true' }),

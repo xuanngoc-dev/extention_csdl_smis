@@ -26,7 +26,7 @@ export const SessionCards = defineComponent({
                 ]),
                 session.error ? h('p', { class: 'error', role: 'alert' }, session.error) : null,
                 h('div', { class: 'row-actions' }, [
-                  h('button', { type: 'button', class: 'ghost-button', onClick: () => session.openConfig() }, 'Chọn năm học'),
+                  h('button', { type: 'button', class: 'ghost-button', onClick: () => session.openConfig() }, 'Cài đặt'),
                   h('button', { type: 'button', class: 'ghost-button', onClick: () => session.logout() }, 'Đăng xuất'),
                 ]),
               ])

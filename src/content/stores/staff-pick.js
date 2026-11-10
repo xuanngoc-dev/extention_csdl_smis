@@ -3,9 +3,6 @@ import { bytesToBase64, saveBase64File } from '../lib/blob-file.js';
 import { translateError } from '../lib/errors.js';
 import { readCapLevels } from '../lib/staff-catalog.js';
 import { uploadStaffOverPort } from '../lib/staff-upload.js';
-import { isStaffRowReady, mapOfficials } from '../../shared/staff-officials.js';
-
-let sendNoticeTimer = 0;
 
 function capState() {
   const caps = readCapLevels();
@@ -17,9 +14,6 @@ function capState() {
 
 export const useStaffPickStore = defineStore('staff-pick', {
   state: () => ({
-    rows: [],
-    loaded: 0,
-    onLookupPage: false,
     ...capState(),
     namHoc: '',
     maTruongHoc: '',
@@ -40,21 +34,9 @@ export const useStaffPickStore = defineStore('staff-pick', {
     sendNotice: '',
     sendNoticeError: false,
     sendFailure: null,
+    sendResult: null,
   }),
-  getters: {
-    readyCount(state) {
-      return state.rows.filter(isStaffRowReady).length;
-    },
-  },
   actions: {
-    apply(payload) {
-      this.onLookupPage = Boolean(payload.onLookupPage);
-      this.loaded = Number(payload.loaded) || 0;
-      this.rows = mapOfficials(payload.rows);
-    },
-    applyFilters() {
-      // Năm học, cấp học và mã trường không lấy từ bộ lọc của trang tra cứu.
-    },
     loadCapLevels() {
       const caps = readCapLevels();
       const previous = String(this.capHoc || '');
@@ -70,6 +52,9 @@ export const useStaffPickStore = defineStore('staff-pick', {
     },
     clearSendFailure() {
       this.sendFailure = null;
+    },
+    clearSendResult() {
+      this.sendResult = null;
     },
     async uploadToSmis({ key, cap, file, filter }) {
       if (this.sendActive) return;
@@ -90,7 +75,7 @@ export const useStaffPickStore = defineStore('staff-pick', {
       this.sendNotice = '';
       this.sendNoticeError = false;
       this.sendFailure = null;
-      window.clearTimeout(sendNoticeTimer);
+      this.sendResult = null;
       try {
         const result = await uploadStaffOverPort({
           kind: key,
@@ -113,12 +98,12 @@ export const useStaffPickStore = defineStore('staff-pick', {
           };
           return;
         }
+        this.sendNotice = '';
         this.sendNoticeError = false;
-        this.sendNotice = returned || 'Đã gửi file sang SMIS.';
-        sendNoticeTimer = window.setTimeout(() => {
-          this.sendNotice = '';
-          this.sendNoticeError = false;
-        }, 5000);
+        this.sendResult = {
+          key,
+          detail: returned || 'Đã gửi file sang SMIS.',
+        };
       } finally {
         this.sendActive = false;
       }

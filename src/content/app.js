@@ -3,7 +3,6 @@ import { BaseIcon } from './components/base-icon.js';
 import { Panel } from './components/panel.js';
 import { LOGIN_WINDOW_MESSAGE_TYPE, MESSAGE_TYPE } from '../shared/messages.js';
 import { browserApi } from './runtime/browser-api.js';
-import { startStaffWatch } from './lib/staff-watch.js';
 import { FEATURE_ROLE, sameSchoolCode } from './lib/csdl-user.js';
 import { useNavStore } from './stores/nav.js';
 import { useSessionStore } from './stores/session.js';
@@ -27,7 +26,7 @@ export const App = defineComponent({
       present.value = false;
       window.clearTimeout(leaveTimer);
       ui.finishClose();
-      if (!staffPick.sendActive && !staffPick.sendFailure) nav.reset();
+      if (!staffPick.sendActive && !staffPick.sendFailure && !staffPick.sendResult) nav.reset();
     }
 
     function reveal() {
@@ -73,7 +72,7 @@ export const App = defineComponent({
         closePanel();
         return;
       }
-      const pendingKey = staffPick.sendActive ? staffPick.sendKey : staffPick.sendFailure?.key;
+      const pendingKey = staffPick.sendActive ? staffPick.sendKey : (staffPick.sendFailure?.key || staffPick.sendResult?.key);
       if (pendingKey) nav.show(pendingKey);
       ui.openPanel();
       reveal();
@@ -84,7 +83,7 @@ export const App = defineComponent({
       () => [session.loggedIn, session.checking, session.csdlRole, session.csdlSchoolCode, session.schoolCode],
       ([loggedIn, checking, role, csdlSchoolCode, schoolCode]) => {
         const schoolReady = role !== FEATURE_ROLE || sameSchoolCode(csdlSchoolCode, schoolCode);
-        if (!checking && (!loggedIn || !schoolReady) && !staffPick.sendActive && !staffPick.sendFailure) nav.reset();
+        if (!checking && (!loggedIn || !schoolReady) && !staffPick.sendActive && !staffPick.sendFailure && !staffPick.sendResult) nav.reset();
       },
     );
 
@@ -92,12 +91,10 @@ export const App = defineComponent({
       if (message?.type === MESSAGE_TYPE && message.action === 'toggle-panel') togglePanel();
       if (message?.type === LOGIN_WINDOW_MESSAGE_TYPE) session.refresh();
     };
-    const stopStaffWatch = startStaffWatch(staffPick);
     onMounted(() => browserApi.runtime.onMessage.addListener(onMessage));
     onUnmounted(() => {
       window.clearTimeout(leaveTimer);
       browserApi.runtime.onMessage.removeListener(onMessage);
-      stopStaffWatch();
     });
 
     return () =>

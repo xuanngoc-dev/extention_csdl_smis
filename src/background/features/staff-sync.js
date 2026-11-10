@@ -2,7 +2,7 @@
  * Nhân sự sang SMIS: tải file import từ CSDL ngành vào bộ nhớ,
  * rồi gửi đúng file đó sang /C{cap}/GiaoVienImportExcel.aspx.
  */
-import { SMIS_BASE_URL, SMIS_BROWSER_HEADERS, STAFF_UPLOAD_TIMEOUT_MS } from '../core/constants.js';
+import { SMIS_BASE_URL, SMIS_BROWSER_HEADERS, STAFF_UPLOAD_TIMEOUT_MS, STUDENT_IMPORT_TIMEOUT_MS } from '../core/constants.js';
 import { toSyncErrorCode } from '../core/errors.js';
 import { exportSmisFile, exportTeacherFile } from '../csdl/staff-export.js';
 import { buildKqhtRequest, buildPhanCongRequest } from '../../shared/smis-export.js';
@@ -87,6 +87,16 @@ export async function uploadStaffFile(payload, signal) {
   } catch (error) {
     if (signal?.aborted) return { ok: false, error: 'staff_send_cancelled' };
     console.log('[csdl][sync-staff]', error);
+    if (isTimeoutError(error)) {
+      return {
+        ok: false,
+        error: 'smis_import_timeout',
+        data: {
+          detail: 'SMIS xử lý lâu nên plugin chưa nhận được kết quả. Dữ liệu có thể đã được nhập. Hãy mở trang SMIS để kiểm tra, chưa nên gửi lại ngay.',
+          pageUrl: smisImportUrl(payload),
+        },
+      };
+    }
     const code = error instanceof Error && error.message.startsWith('staff_') ? error.message : toSyncErrorCode(error);
     return { ok: false, error: code, data: { pageUrl: smisImportUrl(payload) } };
   }
@@ -178,7 +188,7 @@ async function runStudentUpload({ pageUrl, file, note, fail, resultName, signal 
   const page = await fetchSmisPage(pageUrl, signal);
   note(`GET ${pageUrl} -> ${page.ok ? 'ok' : page.error}`);
   if (!page.ok) return fail(page.error);
-  const uploaded = await postUploadForm(pageUrl, page.html, buildStudentUploadStep(), file, STAFF_UPLOAD_TIMEOUT_MS, signal);
+  const uploaded = await postUploadForm(pageUrl, page.html, buildStudentUploadStep(), file, STUDENT_IMPORT_TIMEOUT_MS, signal);
   notePage('Tải lên', uploaded, note);
   if (isLoginRedirect(uploaded.res)) return fail('smis_not_logged_in');
   if (isServerErrorPage(uploaded.res)) return fail('step1_server_error');
@@ -192,7 +202,7 @@ async function runStudentUpload({ pageUrl, file, note, fail, resultName, signal 
   } catch {
     return fail('form_not_found');
   }
-  const checked = await postSmisAjax(pageUrl, buildFormBody(inputs, buildStudentCheckOverrides()), 60000, signal);
+  const checked = await postSmisAjax(pageUrl, buildFormBody(inputs, buildStudentCheckOverrides()), STUDENT_IMPORT_TIMEOUT_MS, signal);
   note(`POST chkImport -> ${checked.response?.status ?? 0}`);
   if (checked.loggedOut || isLoginRedirect(checked.response)) return fail('smis_not_logged_in');
   if (isServerErrorPage(checked.response) || !checked.response.ok || !checked.delta.ok || checked.delta.errorMessage) {
@@ -201,16 +211,18 @@ async function runStudentUpload({ pageUrl, file, note, fail, resultName, signal 
   const merged = checked.delta.isFullHtml
     ? parseFormInputsById(checked.text, 'form1')
     : mergeFormOverrides(inputs, checked.delta.hiddenFields, checked.delta.updatePanels);
-  const written = await postSmisAjax(pageUrl, buildFormBody(merged, buildStudentOkOverrides()), 120000, signal);
+  const written = await postSmisAjax(pageUrl, buildFormBody(merged, buildStudentOkOverrides()), STUDENT_IMPORT_TIMEOUT_MS, signal);
   note(`POST btnOK -> ${written.response?.status ?? 0}`);
   if (written.loggedOut || isLoginRedirect(written.response)) return fail('smis_not_logged_in');
+  if (isGatewayTimeout(written.response)) {
+    return fail('smis_import_timeout', {
+      detail: 'SMIS xử lý lâu nên plugin chưa nhận được kết quả. Dữ liệu có thể đã được nhập. Hãy mở trang SMIS để kiểm tra, chưa nên gửi lại ngay.',
+    });
+  }
   if (isServerErrorPage(written.response) || !written.response.ok) return fail('step2_server_error');
   const notification = parsePrimaryNotification(written.text);
   if (!notification) note('Bước ghi học sinh không có notification().');
-  const afterOk = written.delta.isFullHtml
-    ? parseFormInputsById(written.text, 'form1')
-    : mergeFormOverrides(merged, written.delta.hiddenFields, written.delta.updatePanels);
-  const resultFile = await fetchStudentResult(pageUrl, afterOk, note, resultName, signal);
+  const resultFile = await readStudentResult(pageUrl, written, merged, note, resultName, signal);
   const data = {
     notification,
     title: extractPageTitle(written.text),
@@ -218,6 +230,19 @@ async function runStudentUpload({ pageUrl, file, note, fail, resultName, signal 
   };
   if (notification?.type === 'success') return { ok: true, data };
   return { ok: false, error: 'smis_rejected', data };
+}
+
+async function readStudentResult(pageUrl, written, merged, note, resultName, signal) {
+  try {
+    const afterOk = written.delta.isFullHtml
+      ? parseFormInputsById(written.text, 'form1')
+      : mergeFormOverrides(merged, written.delta.hiddenFields, written.delta.updatePanels);
+    return await fetchStudentResult(pageUrl, afterOk, note, resultName, signal);
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    note(`Không lấy được file kết quả học sinh: ${error instanceof Error ? error.message : 'lỗi'}`);
+    return null;
+  }
 }
 
 async function fetchStudentResult(pageUrl, inputs, note, resultName, signal) {
@@ -228,7 +253,7 @@ async function fetchStudentResult(pageUrl, inputs, note, resultName, signal) {
         method: 'POST',
         cache: 'no-store',
         body: buildUploadFormData(inputs, buildStudentResultStep(), emptyUploadFile()),
-        signal: signalWithTimeout(60000, signal),
+        signal: signalWithTimeout(STUDENT_IMPORT_TIMEOUT_MS, signal),
       },
       { ...SMIS_BROWSER_HEADERS, Origin: SMIS_BASE_URL, Referer: pageUrl },
     );
@@ -275,6 +300,15 @@ async function fetchResultFile(pageUrl, html, steps, note, resultName = 'KetQuaN
     console.warn('[csdl] không lấy được file kết quả nhân sự', error);
     return null;
   }
+}
+
+function isTimeoutError(error) {
+  return error?.name === 'TimeoutError' || error?.cause?.name === 'TimeoutError';
+}
+
+function isGatewayTimeout(response) {
+  const status = Number(response?.status);
+  return status === 408 || status === 504;
 }
 
 function notePage(step, posted, note) {

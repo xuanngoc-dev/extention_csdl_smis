@@ -609,35 +609,6 @@
   margin: 12px 0 8px;
 }
 
-.schema-table {
-  width: 100%;
-  margin: 0 0 12px;
-  border-collapse: collapse;
-}
-
-.schema-table th,
-.schema-table td {
-  padding: 6px 4px;
-  border-bottom: 1px solid #d3e2f7;
-  text-align: left;
-}
-
-.schema-table th {
-  color: #5b6b88;
-  font-weight: 700;
-}
-
-.pick-count {
-  margin: 0 0 8px;
-  font-weight: 600;
-}
-
-.pick-wrap { overflow-x: auto; margin-bottom: 12px; }
-
-.pick-table td { white-space: nowrap; }
-
-.pick-missing { color: #b91c1c; }
-
 .ok { color: #15803d; }
 
 .sync-log {

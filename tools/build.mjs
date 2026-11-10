@@ -28,8 +28,6 @@ const entries = [
       STAFF_EXPORT_TOKEN: JSON.stringify(exportToken),
     },
   },
-  { entryPoints: ['src/page/staff-watch.js'], outfile: 'build/content-scripts/page-hook.js' },
-  { entryPoints: ['src/page/catalog-bridge.js'], outfile: 'build/content-scripts/catalog-bridge.js' },
   {
     entryPoints: ['src/content/index.js'],
     outfile: 'build/content-scripts/csdl.js',
