@@ -646,6 +646,16 @@
   outline: none;
 }
 
+.option-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 8px;
+  cursor: pointer;
+}
+.option-row input { margin-top: 3px; }
+.settings .muted { margin: 0 0 16px; }
+
 .confirm-dialog h3 { margin: 0 0 8px; font-size: 16px; }
 .confirm-dialog p { margin: 0; }
 .confirm-dialog .row-actions { justify-content: flex-end; margin-top: 16px; }

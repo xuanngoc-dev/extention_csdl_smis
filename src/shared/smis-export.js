@@ -1,5 +1,6 @@
 /**
  * Body xuất KQHT và phân công, bám docs/demo2.html.
+ * KQHT gửi kèm file mẫu SMIS: multipart field file và request.
  * Tên trang là aspx SMIS đang chuyển về Login, không phải 404.
  */
 
@@ -48,10 +49,12 @@ export function buildKqhtRequest(filter) {
   const gvcn = loai === 'nhan-xet-gvcn';
   const theoKhoi = !cap1 && loai === 'diem' && filter?.phamVi === 'khoi';
   const maLopHoc = String(filter?.maLopHoc ?? '').trim();
-  const maLopSmis = String(filter?.maLopSmis ?? '').trim();
+  const tenLopHoc = String(filter?.tenLopHoc ?? '').trim();
+  const tenLopSmis = String(filter?.tenLopSmis ?? '').trim();
   const grade = readGrade(common.khoiText, gradeBounds(cap));
   if (!grade.ok) return grade.error;
   if (!theoKhoi && !maLopHoc) return { ok: false, error: 'kqht_lop_missing' };
+  if (!theoKhoi && !tenLopSmis && !tenLopHoc) return { ok: false, error: 'kqht_lop_ten_missing' };
 
   const body = { maTruongHoc: common.maTruongHoc, namHoc: common.namHoc };
   let path;
@@ -88,7 +91,8 @@ export function buildKqhtRequest(filter) {
     loai,
     theoKhoi,
     smisKhoi: useGrade ? grade.value : null,
-    smisLop: maLopSmis || maLopHoc,
+    grade: grade.value,
+    smisLop: tenLopSmis || tenLopHoc,
   };
 }
 

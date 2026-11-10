@@ -2,10 +2,10 @@
  * Mở đúng trang nhập KQHT theo cấp, lớp, môn và mốc, rồi ghi file Excel.
  * Khối cấp 2–3 đệm hai chữ số vì popup điểm SMIS nhận maKhoi dạng đó.
  */
-import { SMIS_BASE_URL } from '../core/constants.js';
+import { SMIS_BASE_URL, SMIS_FILE_INPUT_NAME } from '../core/constants.js';
 import { buildKqhtRequest, resultImportPage } from '../../shared/smis-export.js';
-import { parseFormInputsById } from '../net/aspnet.js';
-import { fetchSmisPage } from '../net/http.js';
+import { parseFormInputsById, parseHtmlAttributes } from '../net/aspnet.js';
+import { emptyUploadFile, fetchSmisPage, isLoginRedirect, isServerErrorPage, postAspNetForm } from '../net/http.js';
 import { matchOption, parseRadGridOptions, readRadGridSelectedValue } from '../net/radgrid.js';
 import { buildPlainImportSteps, limitOverrides } from '../net/result-form.js';
 import { postExcelImport } from './excel-import.js';
@@ -14,6 +14,9 @@ const KHOI = 'ctl00$ContentPlaceHolder1$ctl00$rcbKhoi';
 const LOP = 'ctl00$ContentPlaceHolder1$ctl00$rcbLop';
 const MON = 'ctl00$ContentPlaceHolder1$ctl00$rcbMonHoc';
 const PERIOD = 'ctl00$ContentPlaceHolder1$ctl00$rcbThoiDiemDanhGia';
+
+const TEMPLATE_BUTTON = 'ctl00$ContentPlaceHolder1$ctl00$btnTaiExcelKemDuLieu';
+const TEMPLATE_TIMEOUT_MS = 120000;
 
 const RESULT_NAMES = {
   diem: 'KetQuaNhapDiem.xls',
@@ -47,6 +50,56 @@ export function resultPageUrl(cap, built, extra = {}) {
   return `${root}?${params}`;
 }
 
+/** File mẫu trên trang import, đã chọn đúng khối và lớp, để CSDL ngành giữ mã học sinh SMIS. */
+export async function downloadResultTemplate({ cap, built }) {
+  const opened = await openResultPage(cap, built, () => {}, undefined, templateOpenOptions(built));
+  if (!opened.ok) return { ok: false, error: opened.error, data: { ...(opened.data ?? {}), pageUrl: opened.url } };
+  const button = findTemplateButton(opened.html);
+  if (!button) {
+    return {
+      ok: false,
+      error: 'result_template_missing',
+      data: { detail: 'Trang SMIS không có nút Tải file mẫu.', pageUrl: opened.url },
+    };
+  }
+  let response;
+  try {
+    response = await postAspNetForm(
+      opened.url,
+      opened.html,
+      {
+        fileField: SMIS_FILE_INPUT_NAME,
+        overrides: {},
+        button: { name: button.name, value: button.value, after: SMIS_FILE_INPUT_NAME },
+      },
+      emptyUploadFile(),
+      TEMPLATE_TIMEOUT_MS,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    const code = message === 'form_not_found' || message === 'missing_viewstate_or_eventvalidation' ? message : 'result_template_failed';
+    return { ok: false, error: code, data: { pageUrl: opened.url } };
+  }
+  if (isLoginRedirect(response)) return { ok: false, error: 'smis_not_logged_in', data: { pageUrl: opened.url } };
+  if (isServerErrorPage(response) || !response.ok) {
+    return { ok: false, error: 'result_template_failed', data: { detail: 'Không tải được file mẫu từ SMIS.', pageUrl: opened.url } };
+  }
+  const mime = response.headers.get('content-type') ?? '';
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (/text\/html/i.test(mime) || !isSpreadsheet(bytes)) {
+    return { ok: false, error: 'result_template_failed', data: { detail: 'SMIS không trả file mẫu Excel.', pageUrl: opened.url } };
+  }
+  const name = fileNameFromDisposition(response.headers.get('content-disposition')) || 'FileMau.xlsx';
+  console.log('[csdl][sync-staff]', `Tải file mẫu ${name}, ${bytes.byteLength} byte, ${opened.url}`);
+  return {
+    ok: true,
+    file: {
+      blob: new Blob([bytes], { type: mime || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+      name,
+    },
+  };
+}
+
 export async function uploadResultFile({ payload, file, note, fail, signal, target }) {
   const built = buildKqhtRequest(payload?.filter ?? {});
   if (!built.ok) return fail(built.error, built.data);
@@ -68,27 +121,27 @@ export async function uploadResultFile({ payload, file, note, fail, signal, targ
   });
 }
 
-async function openResultPage(cap, built, note, signal) {
+async function openResultPage(cap, built, note, signal, options = {}) {
+  const pageUrl = options.pageUrl ?? resultPageUrl;
   const needsClass = !built.theoKhoi && Boolean(built.body.maLopHoc);
-  const grades = gradeCandidates(cap, built);
-  let lastUrl = resultPageUrl(cap, built);
+  const grades = options.grades ?? gradeCandidates(cap, built);
+  let lastUrl = pageUrl(cap, built);
   let sawClasses = false;
   let gradeMismatch = null;
   for (const grade of grades) {
-    const url = resultPageUrl(cap, built, { grade });
+    const url = pageUrl(cap, built, { grade });
     lastUrl = url;
     note(`GET ${url}`);
     const page = await fetchSmisPage(url, signal);
     if (!page.ok) return { ...page, url };
     const classes = page.html.includes(LOP) ? parseRadGridOptions(page.html, LOP) : [];
     if (classes.length > 0) sawClasses = true;
-    const classCode = built.smisLop || built.body.maLopHoc;
-    const found = needsClass ? matchOption(classes, classCode) : null;
+    const found = needsClass ? matchClassName(classes, built.smisLop) : null;
     if (needsClass && classes.length > 0 && !found) continue;
     const lopId = found?.value || '';
     let aligned = { ok: true, html: page.html, url };
     if (lopId && readRadGridSelectedValue(page.html, LOP) !== lopId) {
-      const nextUrl = resultPageUrl(cap, built, { grade, lopId });
+      const nextUrl = pageUrl(cap, built, { grade, lopId });
       lastUrl = nextUrl;
       note(`GET ${nextUrl}`);
       const next = await fetchSmisPage(nextUrl, signal);
@@ -118,10 +171,70 @@ async function openResultPage(cap, built, note, signal) {
 }
 
 function classMissingDetail(built) {
-  const csdl = String(built.body.maLopHoc || '');
-  const smis = String(built.smisLop || csdl);
-  if (smis && smis !== csdl) return `SMIS không có lớp với mã ${smis}.`;
-  return `SMIS không có lớp với mã ${csdl}. Hãy nhập mã lớp trên SMIS.`;
+  const name = String(built.smisLop || '').trim();
+  return name ? `SMIS không có lớp tên ${name}.` : 'SMIS không có lớp trùng tên đã chọn.';
+}
+
+function matchClassName(options, name) {
+  const needle = normalizeClassName(name);
+  if (!needle || options.length === 0) return null;
+  return options.find((item) => normalizeClassName(item.text) === needle) ?? null;
+}
+
+function normalizeClassName(value) {
+  return String(value ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function templateOpenOptions(built) {
+  if (built.loai !== 'nhan-xet-gvcn') return undefined;
+  return { pageUrl: gvcnTemplatePageUrl, grades: gvcnTemplateGrades(built) };
+}
+
+function gvcnTemplatePageUrl(cap, built, extra = {}) {
+  const page = resultImportPage(cap, built.loai);
+  const params = new URLSearchParams({
+    is_popup: '1',
+    maKhoi: extra.grade ?? '',
+    idLop: extra.lopId ?? '',
+  });
+  return page ? `${SMIS_BASE_URL}/C${cap}/${page}?${params}` : '';
+}
+
+function gvcnTemplateGrades(built) {
+  const raw = String(built.grade ?? built.smisKhoi ?? '');
+  if (!raw) return [''];
+  return [...new Set([raw.padStart(2, '0'), raw])];
+}
+
+function findTemplateButton(html) {
+  for (const match of html.matchAll(/<input\b[^>]*>/gi)) {
+    const attrs = parseHtmlAttributes(match[0]);
+    if ((attrs.type || '').toLowerCase() !== 'submit' || !attrs.name) continue;
+    if (attrs.name === TEMPLATE_BUTTON || attrs.value === 'Tải file mẫu') {
+      return { name: attrs.name, value: attrs.value || 'Tải file mẫu' };
+    }
+  }
+  return null;
+}
+
+function isSpreadsheet(bytes) {
+  if (bytes.byteLength < 8) return false;
+  const excel = bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0;
+  const zip = bytes[0] === 0x50 && bytes[1] === 0x4b;
+  return excel || zip;
+}
+
+function fileNameFromDisposition(header) {
+  if (!header) return '';
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header)?.[1];
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      return encoded;
+    }
+  }
+  return /filename="?([^";]+)"?/i.exec(header)?.[1]?.trim() ?? '';
 }
 
 function gradeCandidates(cap, built) {

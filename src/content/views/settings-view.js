@@ -1,5 +1,6 @@
 import { defineComponent, h, onMounted, onUnmounted, ref } from 'vue';
 import { CSDL_HOST } from '../../shared/page.js';
+import { readPreviewApiInput, readShowSmisTemplate, writePreviewApiInput, writeShowSmisTemplate } from '../lib/plugin-settings.js';
 import { useSessionStore } from '../stores/session.js';
 
 const dateFormat = new Intl.DateTimeFormat('vi-VN', {
@@ -43,9 +44,17 @@ export const SettingsView = defineComponent({
   setup() {
     const session = useSessionStore();
     const now = ref(clockLabel(new Date()));
+    const showTemplate = ref(false);
+    const previewApiInput = ref(false);
     let timer = 0;
 
     onMounted(() => {
+      readShowSmisTemplate().then((enabled) => {
+        showTemplate.value = enabled;
+      });
+      readPreviewApiInput().then((enabled) => {
+        previewApiInput.value = enabled;
+      });
       timer = window.setInterval(() => {
         now.value = clockLabel(new Date());
       }, 1000);
@@ -53,6 +62,35 @@ export const SettingsView = defineComponent({
     onUnmounted(() => window.clearInterval(timer));
 
     return () => h('div', { class: 'screen settings' }, [
+      h('h2', { class: 'group-title' }, 'Kết quả học tập'),
+      h('label', { class: 'option-row', for: 'settings-preview-api' }, [
+        h('input', {
+          id: 'settings-preview-api',
+          type: 'checkbox',
+          checked: previewApiInput.value,
+          onChange: async (event) => {
+            const enabled = Boolean(event.target.checked);
+            previewApiInput.value = enabled;
+            await writePreviewApiInput(enabled);
+          },
+        }),
+        h('span', 'Xem file mẫu của SMIS'),
+      ]),
+      h('p', { class: 'muted' }, 'Bật để xem file mẫu SMIS trước khi gửi file đó sang API xuất file import.'),
+      h('label', { class: 'option-row', for: 'settings-show-template' }, [
+        h('input', {
+          id: 'settings-show-template',
+          type: 'checkbox',
+          checked: showTemplate.value,
+          onChange: async (event) => {
+            const enabled = Boolean(event.target.checked);
+            showTemplate.value = enabled;
+            await writeShowSmisTemplate(enabled);
+          },
+        }),
+        h('span', 'Xem file mẫu SMIS trước khi gửi'),
+      ]),
+      h('p', { class: 'muted' }, 'Bật để tải về file mẫu vừa lấy từ SMIS, dùng làm đầu vào khi xuất file import.'),
       h('h2', { class: 'group-title' }, 'Thời gian'),
       field('Hiện tại', now.value, 'settings-now'),
       session.error ? h('p', { class: 'error', role: 'alert' }, session.error) : null,

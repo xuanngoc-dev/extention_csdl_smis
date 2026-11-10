@@ -139,21 +139,33 @@ export const StaffPickView = defineComponent({
 });
 
 export function importFileFromResult(result) {
-  if (!result?.ok || !result.data?.base64 || !String(result.data?.name || '').trim()) {
+  const file = fileFromPayload(result?.ok ? result.data : null);
+  if (!file) {
     const detail = String(result?.data?.detail || '').trim();
     return { error: detail || translateError(result?.error || 'staff_export_failed') };
   }
+  return { file, template: fileFromPayload(result.data.template) };
+}
+
+export function templateFileFromResult(result) {
+  const file = fileFromPayload(result?.ok ? result.data?.template : null);
+  if (file) return { file };
+  const detail = String(result?.data?.detail || '').trim();
+  return { error: detail || translateError(result?.error || 'result_template_failed') };
+}
+
+function fileFromPayload(data) {
+  if (!data?.base64 || !String(data?.name || '').trim()) return null;
   let blob;
   try {
-    blob = base64ToBlob(result.data.base64, result.data.mime);
+    blob = base64ToBlob(data.base64, data.mime);
   } catch {
-    return { error: 'File import không có dữ liệu.' };
+    return null;
   }
-  const name = String(result.data.name).trim();
-  if (!blob?.size || !name) return { error: 'File import không có dữ liệu.' };
+  const name = String(data.name).trim();
+  if (!blob?.size || !name) return null;
   const file = new File([blob], name, { type: blob.type || 'application/vnd.ms-excel' });
-  if (!file.size) return { error: 'File import không có dữ liệu.' };
-  return { file };
+  return file.size ? file : null;
 }
 
 function canSend(picked, file) {
@@ -307,7 +319,45 @@ export function downloadErrorDialog(message, popperHost, onClose) {
   return popperHost ? h(Teleport, { to: popperHost }, [dialog]) : dialog;
 }
 
-export function confirmDialog(kind, dialogRef, popperHost, onSettle, file) {
+export function templatePreviewDialog(dialogRef, popperHost, onSettle, file) {
+  const dialog = h('div', { class: 'confirm-backdrop', onClick: () => onSettle(false) }, [
+    h(
+      'div',
+      {
+        ref: dialogRef,
+        class: 'confirm-dialog',
+        tabindex: '-1',
+        role: 'alertdialog',
+        'aria-modal': 'true',
+        'aria-labelledby': 'template-preview-title',
+        onClick: (event) => event.stopPropagation(),
+        onKeydown: (event) => {
+          if (event.key !== 'Escape') return;
+          event.stopPropagation();
+          onSettle(false);
+        },
+      },
+      [
+        h('h3', { id: 'template-preview-title' }, 'Xem file mẫu của SMIS'),
+        h('p', 'File mẫu này sẽ được gửi sang hệ thống CSDL ngành để lấy file import kết quả học tập.'),
+        h('div', { class: 'row-actions is-send' }, [
+          file
+            ? h('button', {
+              type: 'button',
+              class: 'ghost-button',
+              onClick: () => saveBlob(file, file.name),
+            }, 'Tải file mẫu')
+            : null,
+          h('button', { type: 'button', class: 'primary-button', onClick: () => onSettle(true) }, 'Tiếp tục'),
+          h('button', { type: 'button', class: 'ghost-button', onClick: () => onSettle(false) }, 'Huỷ'),
+        ]),
+      ],
+    ),
+  ]);
+  return popperHost ? h(Teleport, { to: popperHost }, [dialog]) : dialog;
+}
+
+export function confirmDialog(kind, dialogRef, popperHost, onSettle, file, templateFile) {
   const dialog = h('div', { class: 'confirm-backdrop', onClick: () => onSettle(false) }, [
     h(
       'div',
@@ -329,6 +379,13 @@ export function confirmDialog(kind, dialogRef, popperHost, onSettle, file) {
         h('h3', { id: 'staff-confirm-title' }, 'Gửi sang SMIS'),
         h('p', `Xác nhận gửi dữ liệu ${kind} sang hệ thống SMIS?`),
         h('div', { class: 'row-actions is-send' }, [
+          templateFile
+            ? h('button', {
+              type: 'button',
+              class: 'ghost-button',
+              onClick: () => saveBlob(templateFile, templateFile.name),
+            }, 'Xem file mẫu SMIS')
+            : null,
           file
             ? h('button', {
               type: 'button',

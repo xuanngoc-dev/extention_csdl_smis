@@ -10,14 +10,21 @@ export async function exportTeacherFile(filter, path = 'giao-vien') {
   return exportSmisFile(path, exportBody(filter), '.xls');
 }
 
-export async function exportSmisFile(path, request, extension = '.xls') {
+export async function exportSmisFile(path, request, extension = '.xls', template = null) {
+  const headers = { token: STAFF_EXPORT_TOKEN };
+  let body = JSON.stringify(request);
+  if (template?.blob) {
+    const form = new FormData();
+    form.append('file', template.blob, template.name || 'FileMau.xlsx');
+    form.append('request', new Blob([JSON.stringify(request)], { type: 'application/json' }));
+    body = form;
+  } else {
+    headers['Content-Type'] = 'application/json';
+  }
   const response = await fetch(`${STAFF_EXPORT_BASE_URL}/${path}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      token: STAFF_EXPORT_TOKEN,
-    },
-    body: JSON.stringify(request),
+    headers,
+    body,
     cache: 'no-store',
     signal: AbortSignal.timeout(EXPORT_TIMEOUT_MS),
   });

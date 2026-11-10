@@ -140,7 +140,7 @@ function classRows(payload) {
     const code = String(item?.maLopHoc ?? '').trim();
     if (!code) return [];
     const name = String(item?.tenLopHoc ?? '').trim();
-    return [{ value: code, label: name ? `${name} (${code})` : code }];
+    return [{ value: code, name, label: name ? `${name} (${code})` : code }];
   });
 }
 

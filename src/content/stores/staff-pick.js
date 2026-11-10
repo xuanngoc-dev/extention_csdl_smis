@@ -23,7 +23,7 @@ export const useStaffPickStore = defineStore('staff-pick', {
     kqhtLoai: 'diem',
     kqhtPhamVi: 'lop',
     maLopHoc: '',
-    maLopSmis: '',
+    tenLopSmis: '',
     maMonHoc: '',
     hocKy: '1',
     thoiDiem: 'GK1',

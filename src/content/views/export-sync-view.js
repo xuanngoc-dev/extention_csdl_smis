@@ -1,6 +1,7 @@
 import { defineComponent, h, inject, nextTick, onMounted, ref, watch } from 'vue';
 import { ElForm, ElFormItem } from 'element-plus/es/components/form/index.mjs';
 import { FilterSelect } from '../components/filter-select.js';
+import { bytesToBase64 } from '../lib/blob-file.js';
 import { translateError } from '../lib/errors.js';
 import { sendBackgroundMessage } from '../lib/message-bridge.js';
 import { schoolYearStart } from '../lib/staff-catalog.js';
@@ -8,7 +9,8 @@ import { gradeOptions, loadClasses } from '../lib/class-catalog.js';
 import { assignmentImportPage, buildKqhtRequest, buildPhanCongRequest, resultImportPage } from '../../shared/smis-export.js';
 import { useSessionStore } from '../stores/session.js';
 import { useStaffPickStore } from '../stores/staff-pick.js';
-import { confirmDialog, downloadErrorDialog, failureDialog, importFileFromResult, resultDialog } from './staff-pick-view.js';
+import { readPreviewApiInput, readShowSmisTemplate } from '../lib/plugin-settings.js';
+import { confirmDialog, downloadErrorDialog, failureDialog, importFileFromResult, resultDialog, templateFileFromResult, templatePreviewDialog } from './staff-pick-view.js';
 
 const RESULT_KINDS = [
   { value: 'diem', label: 'Điểm / Kết quả môn học' },
@@ -59,11 +61,15 @@ export const ExportSyncView = defineComponent({
     const formRef = ref(null);
     const downloadError = ref('');
     const previewFile = ref(null);
+    const templateFile = ref(null);
+    const apiInputFile = ref(null);
+    const apiPreviewOpen = ref(false);
     const classOptions = ref([]);
     const classLoading = ref(false);
     const classError = ref('');
     const fieldErrors = ref({});
     let confirmResolver = null;
+    let apiPreviewResolver = null;
     let appliedTerm = false;
     let classRequest = 0;
 
@@ -179,7 +185,7 @@ export const ExportSyncView = defineComponent({
         : assignmentFields(picked, session, choose);
       fieldErrors.value = runRules(fields, picked);
       if (Object.keys(fieldErrors.value).length) return;
-      const filter = exportFilter(picked, props.feature.key);
+      const filter = exportFilter(picked, props.feature.key, classStateNow().options);
       const built = props.feature.key === 'result' ? buildKqhtRequest(filter) : buildPhanCongRequest(filter);
       if (!built.ok) {
         downloadError.value = built.data?.detail || translateError(built.error);
@@ -189,8 +195,34 @@ export const ExportSyncView = defineComponent({
       downloadError.value = '';
       try {
         let loaded;
+        let showImportPreview = false;
         try {
-          const result = await sendBackgroundMessage('download-staff-file', { kind: props.feature.key, filter });
+          const isResult = props.feature.key === 'result';
+          const keepTemplate = isResult && await readShowSmisTemplate();
+          showImportPreview = !isResult || keepTemplate;
+          const previewApi = isResult && await readPreviewApiInput();
+          let template = null;
+          if (previewApi) {
+            step.value = 'template';
+            const preview = await sendBackgroundMessage('download-staff-file', { kind: props.feature.key, filter, templateOnly: true });
+            const opened = templateFileFromResult(preview);
+            if (!opened.file) {
+              downloadError.value = opened.error;
+              return;
+            }
+            apiInputFile.value = opened.file;
+            step.value = 'preview-api';
+            const goOn = await askApiPreview();
+            if (!goOn || step.value !== 'preview-api') return;
+            template = await fileMessage(opened.file);
+            step.value = 'download';
+          }
+          const result = await sendBackgroundMessage('download-staff-file', {
+            kind: props.feature.key,
+            filter,
+            keepTemplate,
+            template,
+          });
           loaded = importFileFromResult(result);
         } catch {
           downloadError.value = translateError('staff_export_failed');
@@ -204,7 +236,8 @@ export const ExportSyncView = defineComponent({
           downloadError.value = translateError('staff_cap_unsupported');
           return;
         }
-        previewFile.value = loaded.file;
+        previewFile.value = showImportPreview ? loaded.file : null;
+        templateFile.value = loaded.template;
         step.value = 'confirm';
         const agreed = await askConfirm();
         if (!agreed || step.value !== 'confirm') return;
@@ -213,7 +246,29 @@ export const ExportSyncView = defineComponent({
       } finally {
         step.value = '';
         previewFile.value = null;
+        templateFile.value = null;
+        apiInputFile.value = null;
       }
+    }
+
+    function askApiPreview() {
+      apiPreviewOpen.value = true;
+      nextTick(() => dialogRef.value?.focus());
+      return new Promise((resolve) => {
+        apiPreviewResolver = resolve;
+      });
+    }
+
+    function settleApiPreview(agreed) {
+      apiPreviewOpen.value = false;
+      const resolve = apiPreviewResolver;
+      apiPreviewResolver = null;
+      resolve?.(agreed);
+    }
+
+    async function fileMessage(file) {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      return { name: file.name, mime: file.type, base64: bytesToBase64(bytes) };
     }
 
     function askConfirm() {
@@ -239,7 +294,9 @@ export const ExportSyncView = defineComponent({
 
     return () => {
       const sending = picked.sendActive && picked.sendKey === props.feature.key;
-      const loadingText = step.value === 'download'
+      const loadingText = step.value === 'template'
+        ? 'Đang tải file mẫu từ SMIS…'
+        : step.value === 'download'
         ? 'Đang tải file import…'
         : (step.value === 'send' || sending)
           ? 'Đang gửi dữ liệu sang SMIS. Vui lòng đợi trong giây lát.'
@@ -264,7 +321,8 @@ export const ExportSyncView = defineComponent({
           'Gửi sang SMIS',
         )),
         downloadError.value ? downloadErrorDialog(downloadError.value, popperHost, () => { downloadError.value = ''; }) : null,
-        confirmOpen.value ? confirmDialog(props.feature.title, dialogRef, popperHost, settleConfirm, previewFile.value) : null,
+        apiPreviewOpen.value ? templatePreviewDialog(dialogRef, popperHost, settleApiPreview, apiInputFile.value) : null,
+        confirmOpen.value ? confirmDialog(props.feature.title, dialogRef, popperHost, settleConfirm, previewFile.value, templateFile.value) : null,
         failure ? failureDialog(failure, popperHost, () => picked.clearSendFailure(), openFailurePage) : null,
         result ? resultDialog(result.detail, popperHost, () => picked.clearSendResult()) : null,
         loadingText ? h('div', { class: 'screen-loading', role: 'status' }, [
@@ -299,7 +357,7 @@ function destination(key, picked) {
   return page ? `/C${cap}/${page}` : '';
 }
 
-function exportFilter(picked, key) {
+function exportFilter(picked, key, classOptions = []) {
   const common = {
     maTruongHoc: String(picked.maTruongHoc || '').trim(),
     namHoc: String(picked.namHoc || '').trim(),
@@ -313,12 +371,14 @@ function exportFilter(picked, key) {
   if (key === 'teaching-assignment') {
     return { ...common, loai: picked.phanCongLoai, thoiDiem: picked.phanCongThoiDiem };
   }
+  const selected = classOptions.find((row) => row.value === common.maLopHoc);
   return {
     ...common,
     loai: picked.kqhtLoai,
     phamVi: picked.kqhtPhamVi,
     thoiDiem: picked.thoiDiem,
-    maLopSmis: String(picked.maLopSmis || '').trim(),
+    tenLopHoc: String(selected?.name || '').trim(),
+    tenLopSmis: String(picked.tenLopSmis || '').trim(),
   };
 }
 
@@ -387,8 +447,8 @@ function resultFields(picked, session, classState, choose) {
       }),
     });
     fields.push({
-      label: 'Lớp học trên SMIS',
-      control: textField(picked.maLopSmis, 'Nhập nếu khác mã lớp CSDL', (value) => picked.setChoice('maLopSmis', value)),
+      label: 'Tên lớp trên SMIS',
+      control: textField(picked.tenLopSmis, 'Nhập nếu khác tên lớp CSDL', (value) => picked.setChoice('tenLopSmis', value)),
     });
   }
   if (mode.cap23 && !mode.gvcn) {
@@ -460,10 +520,10 @@ function resultHint(picked) {
       ? 'Nhận xét GVCN cấp 1 luôn lấy cuối năm, mốc CK2.'
       : 'Nhận xét GVCN cấp 2–3 lấy cả năm, không gửi môn hay học kỳ.'
     : mode.cap1
-      ? 'Chọn khối để tải lớp. Cấp 1 gửi cả mã lớp và khối. Nếu SMIS dùng mã lớp khác, nhập mã lớp trên SMIS. Mã phân hiệu có thể để trống.'
+      ? 'Chọn khối để tải lớp. Cấp 1 gửi mã lớp CSDL và khối. SMIS được chọn theo tên lớp. Mã phân hiệu có thể để trống.'
       : mode.theoKhoi
         ? 'Xuất theo khối không gửi mã lớp. Cấp 2–3 không gửi mã phân hiệu.'
-        : 'Chọn khối để tải lớp. File xuất theo mã lớp CSDL. Nếu SMIS dùng mã khác, nhập mã lớp trên SMIS. Cấp 2–3 không gửi mã phân hiệu.';
+        : 'Chọn khối để tải lớp. File xuất theo mã lớp CSDL. SMIS được chọn theo tên lớp. Cấp 2–3 không gửi mã phân hiệu.';
   // return h('p', { class: 'muted filter-note' }, text);
 }
 

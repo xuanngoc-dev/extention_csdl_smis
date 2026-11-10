@@ -7,7 +7,7 @@ import { toSyncErrorCode } from '../core/errors.js';
 import { exportSmisFile, exportTeacherFile } from '../csdl/staff-export.js';
 import { buildKqhtRequest, buildPhanCongRequest } from '../../shared/smis-export.js';
 import { assignmentPageUrl, uploadAssignmentFile } from './assignment-upload.js';
-import { resultPageUrl, uploadResultFile } from './result-upload.js';
+import { downloadResultTemplate, resultPageUrl, uploadResultFile } from './result-upload.js';
 import { extractPageTitle, mergeFormOverrides, parseFormInputsById, parseNotifications, parsePrimaryNotification } from '../net/aspnet.js';
 import { buildFormBody, buildUploadFormData, emptyUploadFile, fetchSmisPage, fetchWithDnrRule, isLoginRedirect, isServerErrorPage, postAspNetForm, postSmisAjax, postUploadForm, signalWithTimeout } from '../net/http.js';
 import { buildClassImportSteps, buildStaffImportSteps } from '../net/staff-form.js';
@@ -39,8 +39,23 @@ export async function downloadStaffImport(payload) {
     const requested = exportRequest(payload?.kind, filter);
     if (requested) {
       if (!requested.ok) return requested;
-      const file = await exportSmisFile(requested.path, requested.body, requested.extension);
-      return await importFileResult(file);
+      let template = null;
+      if (payload?.kind === 'result') {
+        template = templateFromPayload(payload?.template);
+        if (!template) {
+          const downloaded = await downloadResultTemplate({ cap: String(filter.capHoc ?? ''), built: requested });
+          if (!downloaded.ok) return downloaded;
+          template = downloaded.file;
+        }
+        if (payload?.templateOnly) {
+          const kept = await templatePayload(template);
+          if (!kept) return { ok: false, error: 'result_template_failed', data: { detail: 'Không tải được file mẫu từ SMIS.' } };
+          return { ok: true, data: { template: kept } };
+        }
+      }
+      const file = await exportSmisFile(requested.path, requested.body, requested.extension, template);
+      const kept = payload?.keepTemplate ? template : null;
+      return await importFileResult(file, kept);
     }
     const cap = String(filter.capHoc ?? '');
     if (!String(filter.maTruongHoc ?? '').trim() || !String(filter.namHoc ?? '').trim() || !cap) {
@@ -58,20 +73,41 @@ export async function downloadStaffImport(payload) {
   }
 }
 
-function importFileResult(file) {
-  return file.blob.arrayBuffer().then((buffer) => {
+function importFileResult(file, template) {
+  return file.blob.arrayBuffer().then(async (buffer) => {
     const bytes = new Uint8Array(buffer);
     if (!String(file.name || '').trim() || bytes.byteLength === 0) return { ok: false, error: 'staff_export_failed' };
     console.log('[csdl][sync-staff]', `Tải file import ${file.name}, ${bytes.byteLength} byte`);
-    return {
-      ok: true,
-      data: {
-        name: file.name,
-        mime: file.blob.type || 'application/vnd.ms-excel',
-        base64: bytesToBase64(bytes),
-      },
+    const data = {
+      name: file.name,
+      mime: file.blob.type || 'application/vnd.ms-excel',
+      base64: bytesToBase64(bytes),
     };
+    const kept = await templatePayload(template);
+    if (kept) data.template = kept;
+    return { ok: true, data };
   });
+}
+
+function templateFromPayload(data) {
+  const name = String(data?.name ?? '').trim();
+  const bytes = base64ToBytes(data?.base64);
+  if (!name || bytes.byteLength === 0) return null;
+  return {
+    name,
+    blob: new Blob([bytes], { type: data?.mime || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+  };
+}
+
+async function templatePayload(template) {
+  if (!template?.blob || !String(template.name || '').trim()) return null;
+  const bytes = new Uint8Array(await template.blob.arrayBuffer());
+  if (bytes.byteLength === 0) return null;
+  return {
+    name: template.name,
+    mime: template.blob.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    base64: bytesToBase64(bytes),
+  };
 }
 
 function exportRequest(kind, filter) {
