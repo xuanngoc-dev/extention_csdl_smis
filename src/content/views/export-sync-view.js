@@ -350,7 +350,9 @@ function termNumber(label) {
 function destination(key, picked) {
   const cap = String(picked.capHoc || '');
   if (!['1', '2', '3'].includes(cap)) return '';
-  const page = key === 'result' ? resultImportPage(cap, picked.kqhtLoai) : assignmentImportPage(picked.phanCongLoai);
+  const page = key === 'result'
+    ? resultImportPage(cap, picked.kqhtLoai)
+    : assignmentImportPage(picked.phanCongLoai);
   return page ? `/C${cap}/${page}` : '';
 }
 
@@ -393,7 +395,7 @@ function filterForm(key, picked, session, formRef, classState, fieldErrors, choo
   }, {
     default: () => h('div', { class: 'filter-grid' }, [
       ...fields.map((field, index) => formField(index + 1, field, fieldErrors)),
-      key === 'result' ? resultHint(picked) : h('p', { class: 'muted filter-note' }, 'Xuất toàn bộ phân công trong phân hiệu. Mã phân hiệu lấy theo thông tin SMIS.'),
+      key === 'result' ? resultHint(picked) : h('p', { class: 'muted filter-note' }, 'Xuất toàn bộ phân công trong phân hiệu. File mẫu lấy từ modal Import Excel trên SMIS, rồi gửi sang CSDL ngành.'),
       key === 'result' && classState?.error ? h('p', { class: 'error filter-note' }, classState.error) : null,
       h('div', { class: 'field-action' }, [sendButton]),
     ]),

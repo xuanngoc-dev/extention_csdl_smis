@@ -6,7 +6,7 @@ import { SMIS_BASE_URL, SMIS_BROWSER_HEADERS, STAFF_UPLOAD_TIMEOUT_MS, STUDENT_I
 import { toSyncErrorCode } from '../core/errors.js';
 import { exportSmisFile, exportTeacherFile } from '../csdl/staff-export.js';
 import { buildKqhtRequest, buildPhanCongRequest } from '../../shared/smis-export.js';
-import { assignmentPageUrl, uploadAssignmentFile } from './assignment-upload.js';
+import { assignmentPageUrl, downloadAssignmentTemplate, uploadAssignmentFile } from './assignment-upload.js';
 import { downloadResultTemplate, resultPageUrl, uploadResultFile } from './result-upload.js';
 import { extractPageTitle, mergeFormOverrides, parseFormInputsById, parseNotifications, parsePrimaryNotification } from '../net/aspnet.js';
 import { buildFormBody, buildUploadFormData, emptyUploadFile, fetchSmisPage, fetchWithDnrRule, isLoginRedirect, isServerErrorPage, postAspNetForm, postSmisAjax, postUploadForm, signalWithTimeout } from '../net/http.js';
@@ -40,10 +40,13 @@ export async function downloadStaffImport(payload) {
     if (requested) {
       if (!requested.ok) return requested;
       let template = null;
-      if (payload?.kind === 'result') {
+      if (payload?.kind === 'result' || payload?.kind === 'teaching-assignment') {
         template = templateFromPayload(payload?.template);
         if (!template) {
-          const downloaded = await downloadResultTemplate({ cap: String(filter.capHoc ?? ''), built: requested });
+          const cap = String(filter.capHoc ?? '');
+          const downloaded = payload.kind === 'result'
+            ? await downloadResultTemplate({ cap, built: requested })
+            : await downloadAssignmentTemplate({ cap, built: requested });
           if (!downloaded.ok) return downloaded;
           template = downloaded.file;
         }
@@ -215,7 +218,7 @@ function smisImportUrl(payload) {
   }
   if (payload?.kind === 'teaching-assignment') {
     const built = buildPhanCongRequest(payload?.filter ?? {});
-    return built.ok ? assignmentPageUrl(cap, built.loai) : '';
+    return built.ok ? assignmentPageUrl(cap, built) : '';
   }
   return `${SMIS_BASE_URL}/C${cap}/${importKind(payload?.kind).page}`;
 }

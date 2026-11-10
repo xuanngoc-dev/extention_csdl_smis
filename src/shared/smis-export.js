@@ -1,6 +1,6 @@
 /**
  * Body xuất KQHT và phân công, bám docs/demo2.html.
- * KQHT gửi kèm file mẫu SMIS: multipart field file và request.
+ * KQHT và phân công gửi kèm file mẫu SMIS: multipart field file và request.
  * Tên trang là aspx SMIS đang chuyển về Login, không phải 404.
  */
 
@@ -16,10 +16,27 @@ export const RESULT_IMPORT_PAGE = {
   '3:nhan-xet-gvcn': 'NhapNhanXetGVCNImportExcel.aspx',
 };
 
-export const ASSIGNMENT_IMPORT_PAGE = {
-  'chuyen-mon': 'PhanCongChuyenMonImportExcel.aspx',
-  'chu-nhiem': 'PhanCongChuNhiemImportExcel.aspx',
-};
+/**
+ * K1/K2 là trang danh sách theo kỳ. Import Excel mở modal riêng:
+ * PhanCongChuyenMonImportExcel.aspx hoặc PhanCongChuNhiemImportExcel.aspx.
+ */
+export function assignmentPeriod(loai, filter) {
+  if (loai === 'chu-nhiem') return filter?.thoiDiem === 'CUOI_NAM' ? '2' : '1';
+  return Number(filter?.hocKy) === 2 ? '2' : '1';
+}
+
+export function assignmentListPage(loai, period = '1') {
+  const ky = period === '2' ? '2' : '1';
+  if (loai === 'chu-nhiem') return `PhanCongChuNhiemK${ky}.aspx`;
+  if (loai === 'chuyen-mon') return `PhanCongChuyenMonK${ky}.aspx`;
+  return '';
+}
+
+export function assignmentImportPage(loai) {
+  if (loai === 'chu-nhiem') return 'PhanCongChuNhiemImportExcel.aspx';
+  if (loai === 'chuyen-mon') return 'PhanCongChuyenMonImportExcel.aspx';
+  return '';
+}
 
 const RESULT_KINDS = {
   1: ['diem', 'nang-luc-pham-chat', 'nhan-xet-gvcn'],
@@ -31,10 +48,6 @@ const PERIODS = ['GK1', 'CK1', 'GK2', 'CK2'];
 
 export function resultImportPage(cap, loai) {
   return RESULT_IMPORT_PAGE[`${cap}:${loai}`] ?? '';
-}
-
-export function assignmentImportPage(loai) {
-  return ASSIGNMENT_IMPORT_PAGE[loai] ?? '';
 }
 
 export function buildKqhtRequest(filter) {
@@ -115,7 +128,8 @@ export function buildPhanCongRequest(filter) {
     if (hocKy !== 1 && hocKy !== 2) return { ok: false, error: 'kqht_hoc_ky_invalid' };
     body.hocKy = hocKy;
   }
-  return { ok: true, path: `phan-cong/${loai}`, body, extension: '.xls', loai };
+  const period = assignmentPeriod(loai, filter);
+  return { ok: true, path: `phan-cong/${loai}`, body, extension: '.xls', loai, period };
 }
 
 function readCommon(filter) {
