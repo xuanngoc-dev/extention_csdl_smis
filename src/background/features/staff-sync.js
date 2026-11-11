@@ -6,6 +6,7 @@ import { SMIS_BASE_URL, SMIS_BROWSER_HEADERS, STAFF_UPLOAD_TIMEOUT_MS, STUDENT_I
 import { toSyncErrorCode } from '../core/errors.js';
 import { exportSmisFile, exportTeacherFile } from '../csdl/staff-export.js';
 import { buildKqhtRequest, buildPhanCongRequest } from '../../shared/smis-export.js';
+import { applySmisMonHoc } from '../../shared/mon-hoc.js';
 import { assignmentPageUrl, downloadAssignmentTemplate, uploadAssignmentFile } from './assignment-upload.js';
 import { downloadResultTemplate, resultPageUrl, uploadResultFile } from './result-upload.js';
 import { extractPageTitle, mergeFormOverrides, parseFormInputsById, parseNotifications, parsePrimaryNotification } from '../net/aspnet.js';
@@ -44,9 +45,11 @@ export async function downloadStaffImport(payload) {
         template = templateFromPayload(payload?.template);
         if (!template) {
           const cap = String(filter.capHoc ?? '');
+          const smisBuilt = payload.kind === 'result' ? applySmisMonHoc(requested) : requested;
+          if (!smisBuilt.ok) return smisBuilt;
           const downloaded = payload.kind === 'result'
-            ? await downloadResultTemplate({ cap, built: requested })
-            : await downloadAssignmentTemplate({ cap, built: requested });
+            ? await downloadResultTemplate({ cap, built: smisBuilt })
+            : await downloadAssignmentTemplate({ cap, built: smisBuilt });
           if (!downloaded.ok) return downloaded;
           template = downloaded.file;
         }
@@ -213,7 +216,7 @@ function smisImportUrl(payload) {
   const cap = String(payload?.cap ?? '');
   if (!['1', '2', '3'].includes(cap)) return '';
   if (payload?.kind === 'result') {
-    const built = buildKqhtRequest(payload?.filter ?? {});
+    const built = applySmisMonHoc(buildKqhtRequest(payload?.filter ?? {}));
     return built.ok ? resultPageUrl(cap, built) : '';
   }
   if (payload?.kind === 'teaching-assignment') {

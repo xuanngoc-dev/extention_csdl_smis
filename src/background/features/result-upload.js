@@ -4,6 +4,7 @@
  */
 import { SMIS_BASE_URL, SMIS_FILE_INPUT_NAME } from '../core/constants.js';
 import { buildKqhtRequest, resultImportPage } from '../../shared/smis-export.js';
+import { applySmisMonHoc } from '../../shared/mon-hoc.js';
 import { parseFormInputsById, parseHtmlAttributes } from '../net/aspnet.js';
 import { emptyUploadFile, fetchSmisPage, isLoginRedirect, isServerErrorPage, postAspNetForm } from '../net/http.js';
 import { matchOption, parseRadGridOptions, readRadGridSelectedValue } from '../net/radgrid.js';
@@ -101,7 +102,7 @@ export async function downloadResultTemplate({ cap, built }) {
 }
 
 export async function uploadResultFile({ payload, file, note, fail, signal, target }) {
-  const built = buildKqhtRequest(payload?.filter ?? {});
+  const built = applySmisMonHoc(buildKqhtRequest(payload?.filter ?? {}));
   if (!built.ok) return fail(built.error, built.data);
   const cap = String(payload?.cap ?? '');
   const opened = await openResultPage(cap, built, note, signal);

@@ -21,6 +21,8 @@ export const ERROR_MESSAGES = {
   kqht_khoi_invalid: 'Khối học không thuộc cấp đã chọn.',
   kqht_thoi_diem_invalid: 'Chọn thời điểm đánh giá.',
   kqht_mon_missing: 'Nhập mã môn học CSDL ngành.',
+  kqht_mon_invalid: 'Mã môn phải thuộc danh mục CSDL ngành.',
+  kqht_mon_moet_missing: 'Môn đã chọn chưa có mã MOET để gửi SMIS.',
   kqht_hoc_ky_invalid: 'Chọn học kỳ 1 hoặc 2.',
   phan_cong_phan_hieu_missing: 'Chưa có mã phân hiệu trên SMIS.',
   result_smis_class_missing: 'SMIS không có lớp trùng tên lớp đã chọn.',

@@ -7,6 +7,7 @@ import { sendBackgroundMessage } from '../lib/message-bridge.js';
 import { schoolYearStart } from '../lib/staff-catalog.js';
 import { gradeOptions, loadClasses } from '../lib/class-catalog.js';
 import { assignmentImportPage, buildKqhtRequest, buildPhanCongRequest, resultImportPage } from '../../shared/smis-export.js';
+import { monHocMappingCodes, monHocMappingOptions, moetCodeFromMapping } from '../../shared/mon-hoc.js';
 import { useSessionStore } from '../stores/session.js';
 import { useStaffPickStore } from '../stores/staff-pick.js';
 import { readPreviewApiInput, readShowSmisTemplate } from '../lib/plugin-settings.js';
@@ -240,7 +241,12 @@ export const ExportSyncView = defineComponent({
         const agreed = await askConfirm();
         if (!agreed || step.value !== 'confirm') return;
         step.value = 'send';
-        await picked.uploadToSmis({ key: props.feature.key, cap: String(picked.capHoc), file: loaded.file, filter });
+        await picked.uploadToSmis({
+          key: props.feature.key,
+          cap: String(picked.capHoc),
+          file: loaded.file,
+          filter: filterForSmis(filter),
+        });
       } finally {
         step.value = '';
         previewFile.value = null;
@@ -381,6 +387,14 @@ function exportFilter(picked, key, classOptions = []) {
   };
 }
 
+/** Filter gửi SMIS: đổi maMonHoc từ mapping_code sang moet_code. */
+function filterForSmis(filter) {
+  const mapping = String(filter?.maMonHoc || '').trim();
+  if (!mapping) return filter;
+  const moet = moetCodeFromMapping(mapping);
+  return { ...filter, maMonHoc: moet || mapping };
+}
+
 function filterForm(key, picked, session, formRef, classState, fieldErrors, choose, sendButton) {
   const fields = key === 'result' ? resultFields(picked, session, classState, choose) : assignmentFields(picked, session, choose);
   return h(ElForm, {
@@ -455,8 +469,13 @@ function resultFields(picked, session, classState, choose) {
       label: 'Mã môn học CSDLN',
       prop: 'maMonHoc',
       required: true,
-      rules: [rule(requireText('Nhập mã môn học CSDL ngành.'), 'Nhập mã môn học CSDL ngành.')],
-      control: textField(picked.maMonHoc, 'VD: TOC2, TOC3', (value) => choose('maMonHoc', value)),
+      rules: [rule(validateMonHoc, 'Chọn mã môn học CSDL ngành.')],
+      control: h(FilterSelect, {
+        modelValue: picked.maMonHoc,
+        'onUpdate:modelValue': (value) => choose('maMonHoc', value),
+        placeholder: 'Chọn mã môn (VD: TOC2, TOC3)',
+        options: monHocMappingOptions(),
+      }),
     });
     fields.push(selectField('Học kỳ', 'hocKy', picked.hocKy, TERMS, (value) => choose('hocKy', value), 'Chọn học kỳ'));
   }
@@ -631,6 +650,23 @@ function requireText(message) {
     }
     callback();
   };
+}
+
+function validateMonHoc(value, callback) {
+  const code = String(value || '').trim();
+  if (!code) {
+    callback(new Error('Chọn mã môn học CSDL ngành.'));
+    return;
+  }
+  if (!monHocMappingCodes().includes(code)) {
+    callback(new Error('Mã môn phải thuộc danh mục CSDL ngành.'));
+    return;
+  }
+  if (!moetCodeFromMapping(code)) {
+    callback(new Error(`Môn ${code} chưa có mã MOET để gửi SMIS.`));
+    return;
+  }
+  callback();
 }
 
 function oneOf(message, allowed) {
